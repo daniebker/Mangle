@@ -99,3 +99,25 @@ def test_build(tmp_path, monkeypatch, detect):
                     assert all(abs(a - b) < 80 for a, b in zip(g, e)), (g, e)
         else:
             assert all(p["panels"] == [] for p in m["pages"])
+
+
+def _opencv4():
+    import cv2
+    return cv2.__version__.startswith("4.")
+
+
+@pytest.mark.skipif(not panels.BUNDLED_KUMIKO.is_file(), reason="kumiko submodule not checked out")
+@pytest.mark.skipif(not _opencv4(), reason="Kumiko needs OpenCV 4.x")
+def test_build_with_kumiko(tmp_path):
+    src = tmp_path / "in.cbz"
+    expected = sample.make(str(src))
+    out = tmp_path / "out.zip"
+    build(src, out, Config(screen=(600, 800), jobs=2))   # finds the bundled Kumiko
+    with zipfile.ZipFile(out) as zf:
+        m = json.loads(zf.read("manifest.json"))
+    assert m["pages"][0]["panels"] == []
+    for page, boxes in zip(m["pages"][1:], list(expected.values())[1:]):
+        got = [p["box"] for p in page["panels"]]
+        assert len(got) == len(boxes)
+        for g, e in zip(got, boxes):
+            assert all(abs(a - b) < 80 for a, b in zip(g, e)), (g, e)

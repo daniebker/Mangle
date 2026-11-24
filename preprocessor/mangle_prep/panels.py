@@ -20,8 +20,13 @@ Box = tuple[int, int, int, int]
 # Detection
 # --------------------------------------------------------------------------
 
+# The git submodule (or the copy bundled in the release zip).
+BUNDLED_KUMIKO = Path(__file__).resolve().parents[1] / "kumiko" / "kumiko"
+
+
 def find_kumiko(explicit: str | None = None) -> str | None:
-    """Locate the Kumiko CLI script: --kumiko, $KUMIKO, or `kumiko` on PATH."""
+    """Locate the Kumiko CLI script: --kumiko, $KUMIKO, the bundled
+    submodule, or `kumiko` on PATH."""
     for cand in (explicit, os.environ.get("KUMIKO")):
         if cand:
             p = Path(cand)
@@ -30,14 +35,16 @@ def find_kumiko(explicit: str | None = None) -> str | None:
             if p.is_file():
                 return str(p.resolve())
             raise FileNotFoundError(f"Kumiko not found at {cand}")
+    if BUNDLED_KUMIKO.is_file():
+        return str(BUNDLED_KUMIKO)
     return shutil.which("kumiko")
 
 
 def detect_kumiko(kumiko: str, page_dir: Path, python: str | None = None) -> dict[str, list[Box]]:
     """Run Kumiko on a folder of pages. Returns {filename: [boxes]}.
 
-    Kumiko is AGPL, so it's run as a separate program rather than imported.
-    It must be run from its own directory (it imports its `lib` package).
+    Kumiko is run as a separate program rather than imported: its `lib`
+    package name would clash, and it must run from its own directory.
     Kumiko needs OpenCV 4.x: it crashes on OpenCV 5's line detector output.
     """
     cmd = [python or sys.executable, kumiko, "-i", str(page_dir.resolve())]

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import os
 import sys
 import tempfile
 import zipfile
@@ -60,10 +61,18 @@ def detect_all(pages: list[Path], cfg: Config) -> list[list[panels.Box]]:
     kumiko = panels.find_kumiko(cfg.kumiko)
     if kumiko:
         print(f"Detecting panels with Kumiko ({kumiko})...", file=cfg.log)
-        found = panels.detect_kumiko(kumiko, pages[0].parent, cfg.kumiko_python)
-        return [found.get(p.name, []) for p in pages]
-    print("Kumiko not found (use --kumiko or $KUMIKO); using the built-in OpenCV detector.",
-          file=cfg.log)
+        try:
+            found = panels.detect_kumiko(kumiko, pages[0].parent, cfg.kumiko_python)
+            return [found.get(p.name, []) for p in pages]
+        except RuntimeError as e:
+            if cfg.kumiko or os.environ.get("KUMIKO"):
+                raise   # explicitly requested: don't silently switch detectors
+            last = str(e).strip().splitlines()[-1]
+            print(f"Kumiko failed ({last}); using the built-in OpenCV detector. "
+                  "Kumiko needs OpenCV 4.x (see requirements.txt).", file=cfg.log)
+    else:
+        print("Kumiko not found (use --kumiko or $KUMIKO); using the built-in OpenCV detector.",
+              file=cfg.log)
     return [panels.detect_opencv(p) for p in pages]
 
 

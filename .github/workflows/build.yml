@@ -26,6 +26,10 @@ jobs:
     steps:
       - uses: actions/checkout@v7
 
+      - name: Fetch Kumiko submodule
+        # .gitmodules uses an SSH URL; fetch it over HTTPS instead.
+        run: git -c "url.https://github.com/.insteadOf=git@github.com:" submodule update --init --depth 1
+
       - name: Install Python dependencies
         run: |
           python3 -m venv ~/venv
@@ -68,11 +72,18 @@ jobs:
     steps:
       - uses: actions/checkout@v7
 
+      - name: Fetch Kumiko submodule
+        # .gitmodules uses an SSH URL; fetch it over HTTPS instead.
+        run: git -c "url.https://github.com/.insteadOf=git@github.com:" submodule update --init --depth 1
+
       - name: Package preprocessor
         run: |
-          mkdir -p dist/mangle-preprocessor
+          mkdir -p dist/mangle-preprocessor/kumiko
           cp -r preprocessor/prep.py preprocessor/preview.py preprocessor/mangle_prep \
                 preprocessor/requirements.txt README.md LICENSE dist/mangle-preprocessor/
+          # Kumiko's runtime files only (prep.py finds it at ./kumiko/kumiko).
+          cp -r preprocessor/kumiko/kumiko preprocessor/kumiko/kumikolib.py preprocessor/kumiko/lib \
+                preprocessor/kumiko/LICENSE preprocessor/kumiko/README.md dist/mangle-preprocessor/kumiko/
           find dist -name __pycache__ -prune -exec rm -r {} +
           (cd dist && zip -qr mangle-preprocessor.zip mangle-preprocessor)
 
@@ -111,7 +122,7 @@ jobs:
           |---|---|
           | \`mangle-kual-kindlehf.zip\` | Kindle on firmware 5.16.3 and newer |
           | \`mangle-kual-kindlepw2.zip\` | Kindle on older 5.x firmware |
-          | \`mangle-preprocessor.zip\` | The desktop preprocessor (\`prep.py\`, \`preview.py\`) |
+          | \`mangle-preprocessor.zip\` | The desktop preprocessor (\`prep.py\`, \`preview.py\`, with Kumiko) |
 
           Unzip the KUAL package into \`/mnt/us/extensions/\` on the Kindle.
           EOF

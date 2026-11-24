@@ -25,7 +25,7 @@ python prep.py "My Manga v01.cbz" -o "My Manga v01.zip" --screen 1072x1448 --dir
 |---|---|---|
 | `--screen WxH` | `1072x1448` | Portrait screen size of the target Kindle |
 | `--direction rtl\|ltr` | `rtl` | Reading direction (`ltr` for western comics) |
-| `--kumiko PATH` | `$KUMIKO`, or `kumiko` on PATH | Kumiko checkout or its `kumiko` script |
+| `--kumiko PATH` | `$KUMIKO`, the bundled submodule, or `kumiko` on PATH | Kumiko checkout or its `kumiko` script |
 | `--kumiko-python PATH` | the current Python | Python used to run Kumiko |
 | `--no-panels` | | Skip panel detection (page mode only) |
 | `--gamma G` | `1.8` | Darkens mid-tones for e-ink (`1` = off) |
@@ -44,8 +44,8 @@ What it does to each volume:
 1. Extracts the images (JPEG, PNG, WebP, GIF, BMP), skips `__MACOSX` and hidden files, and sorts
    pages in natural order (`page2` before `page10`).
 2. Finds panels on the full-resolution pages with [Kumiko](https://github.com/njean42/kumiko).
-   If Kumiko isn't installed it uses a simpler built-in OpenCV detector, which works for clean
-   layouts with white gutters.
+   If Kumiko isn't available or fails, it uses a simpler built-in OpenCV detector, which works
+   for clean layouts with white gutters.
 3. Drops tiny boxes, merges overlapping ones, and sorts panels in reading order: rows from top
    to bottom, columns right to left (RTL), and stacks inside a column from top to bottom.
 4. Pages it isn't confident about (no panels, one huge panel, too many panels, low coverage,
@@ -60,17 +60,28 @@ What it does to each volume:
 
 ### Kumiko
 
-Kumiko isn't on PyPI and is AGPL-licensed, so Mangle runs it as a separate program instead of
-including it:
+Kumiko is a git submodule at `preprocessor/kumiko`, and `prep.py` uses it automatically. Clone
+with submodules:
 
 ```sh
-git clone https://github.com/njean42/kumiko
-python prep.py book.cbz -o book.zip --kumiko ./kumiko
+git clone --recurse-submodules https://github.com/daniebker/mangle
+# or, in an existing checkout:
+git submodule update --init
 ```
+
+The submodule URL is SSH (`git@github.com:`). Without a GitHub SSH key, use
+`git -c "url.https://github.com/.insteadOf=git@github.com:" submodule update --init`.
+The release's `mangle-preprocessor.zip` already contains Kumiko. To use another copy, pass
+`--kumiko PATH` or set `$KUMIKO`.
+
+Kumiko runs as a separate process, because it has to run from its own folder and its `lib`
+package name would clash with other imports.
 
 Kumiko needs **OpenCV 4.x**. With OpenCV 5 it crashes in its line detector (`IndexError: invalid
 index to scalar variable`). `requirements.txt` pins `opencv-python-headless<5` for this reason.
-If your main environment needs OpenCV 5, put Kumiko in its own virtualenv and pass
+If Kumiko was found automatically and fails, `prep.py` says so and falls back to the built-in
+detector. With an explicit `--kumiko` or `$KUMIKO`, the error stops the conversion instead. If
+your main environment needs OpenCV 5, put Kumiko in its own virtualenv and pass
 `--kumiko-python /path/to/venv/bin/python`.
 
 ### Checking the result
@@ -239,5 +250,5 @@ Preprocessor tests: `cd preprocessor && python -m pytest tests`.
 - **WebP input** works whenever Pillow was built with WebP support (the standard wheels are).
 - **Left-to-right comics** are supported with `--direction ltr`, which flips the panel order
   and the tap zones.
-- Licensing: Mangle's own code is MIT. A Kindle binary links FBInk statically, and FBInk is
-  GPLv3, so distributed binaries fall under the GPLv3.
+- Licensing: Mangle is AGPL-3.0 (see `LICENSE`), as is the bundled Kumiko. The Kindle binary
+  also links FBInk (GPLv3) statically. miniz and cJSON are MIT; stb_image is public domain.
