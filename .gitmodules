@@ -1,0 +1,3 @@
+[submodule "preprocessor/kumiko"]
+	path = preprocessor/kumiko
+	url = git@github.com:njean42/kumiko.git
