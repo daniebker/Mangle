@@ -1,0 +1,6 @@
+Pillow>=10.0
+numpy>=1.24
+# Kumiko crashes on OpenCV 5's line detector output, so stay on 4.x.
+opencv-python-headless>=4.8,<5
+# Needed by Kumiko itself (it imports requests at startup).
+requests

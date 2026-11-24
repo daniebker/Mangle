@@ -1,0 +1,8 @@
+__pycache__/
+*.pyc
+.pytest_cache/
+*.part
+*_preview/
+reader/build/
+reader/third_party/FBInk/
+dist/
