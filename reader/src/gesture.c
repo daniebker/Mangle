@@ -13,10 +13,17 @@ Zone gesture_zone(int x, int w)
 
 int gesture_tap(Gesture* g, int x, int y, int w, int h, bool rtl, int64_t now, Action out[2])
 {
-	(void) y;
-	(void) h;
 	int  n = 0;
 	Zone z = gesture_zone(x, w);
+
+	if (y < h / MENU_ZONE_DIV) {
+		if (g->pending) {
+			g->pending = false;
+			out[n++]   = ACT_FORWARD;
+		}
+		out[n++] = ACT_MENU;
+		return n;
+	}
 
 	if (z == ZONE_CENTRE) {
 		if (g->pending && now <= g->deadline) {

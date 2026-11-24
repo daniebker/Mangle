@@ -170,6 +170,10 @@ static void test_gesture(void)
 	CHECK(gesture_tap(&g, 450, 500, W, H, true, 4500, a) == 1 && a[0] == ACT_FORWARD);
 	CHECK(g.pending);
 	// Long press / keys.
+	g.pending = false;
+	CHECK(gesture_tap(&g, 450, 5, W, H, true, 5000, a) == 1 && a[0] == ACT_MENU);
+	gesture_tap(&g, 450, 500, W, H, true, 6000, a);
+	CHECK(gesture_tap(&g, 450, 5, W, H, true, 6100, a) == 2 && a[0] == ACT_FORWARD && a[1] == ACT_MENU);
 	CHECK(gesture_long(&g, 450, W) == ACT_EXIT && !g.pending);
 	CHECK(gesture_long(&g, 10, W) == ACT_REFRESH);
 	CHECK(gesture_key(&g, KEY_PAGEDOWN, true) == ACT_FORWARD);

@@ -1,5 +1,10 @@
 # Changelog
 
+## v0.3.0
+
+### Added
+- Menu bar: tap the top edge of the screen while reading to open it; its `Library` entry returns to the library.
+
 ## v0.2.0
 
 ### Added

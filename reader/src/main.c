@@ -11,6 +11,7 @@
 #include "book.h"
 #include "cache.h"
 #include "display.h"
+#include "font.h"
 #include "gesture.h"
 #include "input.h"
 #include "library.h"
@@ -53,6 +54,7 @@ typedef struct {
 	const char* state_dir;
 	int         flash_every;    // full refresh every N turns
 	bool        verbose;
+	bool        library;    // started with a library folder
 } App;
 
 static void message(const char* a, const char* b)
@@ -97,6 +99,49 @@ static void show(Reader* r, Pos p, bool force_flash)
 	if (nav_prev(r->book, &q))
 		want[1] = nav_image(r->book, q);
 	cache_prefetch(r->cache, want, 2);
+}
+
+// Menu bar across the top of the current page. Returns true if the reader
+// should go back to the library (or quit, when there is no library).
+static bool menu(Reader* r, Pos p)
+{
+	const Screen* s     = &r->app->scr;
+	int           scale = s->width >= 900 ? 3 : 2;
+	int           bar_h = FONT_H * scale + 2 * scale * 6;
+	uint8_t*      f     = r->frame;
+
+	for (int y = 0; y < bar_h && y < s->height; y++)
+		memset(f + (size_t) y * s->width, y >= bar_h - 3 ? 0 : 255, s->width);
+	const char* label = r->app->library ? "< Library" : "< Exit";
+	font_draw(f, s->width, s->height, scale * 8, scale * 6, scale, label, 0);
+	const char* hint = "Tap page to close";
+	int         hw   = (int) strlen(hint) * FONT_W * scale;
+	font_draw(f, s->width, s->height, s->width - hw - scale * 8, scale * 6, scale, hint, 96);
+	display_frame(f, false);
+
+	bool leave = false;
+	while (!quit) {
+		InEvent ev;
+		int     rc = input_wait(&ev, -1);
+		if (rc <= 0)
+			continue;
+		if (ev.kind == IN_QUIT) {
+			leave = true;
+			break;
+		}
+		if (ev.kind == IN_TAP) {
+			leave = ev.y < bar_h && ev.x < s->width / 2;
+			break;
+		}
+		if (ev.kind == IN_KEY) {
+			Gesture g = { 0 };
+			leave     = gesture_key(&g, ev.code, false) == ACT_EXIT;
+			break;
+		}
+	}
+	if (!leave)
+		show(r, p, false);    // repaint the page over the bar
+	return leave;
 }
 
 static void save(Reader* r, Pos p)
@@ -176,6 +221,9 @@ static void read_book(App* app, const char* path)
 				case ACT_EXIT:
 					done = true;
 					break;
+				case ACT_MENU:
+					done = menu(&r, pos);
+					break;
 				case ACT_NONE:
 					break;
 			}
@@ -236,6 +284,7 @@ int main(int argc, char** argv)
 				return c == 'h' ? 0 : 2;
 		}
 	}
+	app.library = library != NULL;
 	const char* book = optind < argc ? argv[optind] : NULL;
 	if (!book && !library && !resume) {
 		usage(argv[0]);

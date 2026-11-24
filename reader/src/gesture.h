@@ -2,6 +2,7 @@
 //
 // Tap zones (RTL): left third = forward, centre third = toggle/forward,
 // right third = back. LTR books mirror the side zones.
+// A tap in the top MENU_ZONE_DIV'th of the screen opens the menu bar.
 // A centre tap waits DOUBLE_TAP_MS for a second tap: two taps toggle
 // panel/page mode, one tap moves forward. Side taps act immediately.
 #pragma once
@@ -10,6 +11,7 @@
 #include <stdint.h>
 
 #define DOUBLE_TAP_MS 300
+#define MENU_ZONE_DIV 12    // top 1/12 of the screen opens the menu
 
 typedef enum {
 	ACT_NONE = 0,
@@ -18,6 +20,7 @@ typedef enum {
 	ACT_TOGGLE,
 	ACT_EXIT,
 	ACT_REFRESH,    // full flashing redraw
+	ACT_MENU,       // tap on the top edge: open the menu bar
 } Action;
 
 typedef enum { ZONE_LEFT, ZONE_CENTRE, ZONE_RIGHT } Zone;
