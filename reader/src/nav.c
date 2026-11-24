@@ -34,7 +34,20 @@ Pos nav_start(const Book* b)
 const char* nav_image(const Book* b, Pos p)
 {
 	const Page* pg = &b->pages[p.page];
-	return (paneled(b, p) && p.panel >= 0) ? pg->panels[p.panel] : pg->image;
+	if (paneled(b, p) && p.panel >= 0 && pg->panels[p.panel].image)
+		return pg->panels[p.panel].image;
+	return pg->image;
+}
+
+bool nav_rect(const Book* b, Pos p, int rect[4])
+{
+	if (!paneled(b, p) || p.panel < 0)
+		return false;
+	const Panel* pn = &b->pages[p.page].panels[p.panel];
+	if (pn->image)
+		return false;
+	rect[0] = pn->x, rect[1] = pn->y, rect[2] = pn->w, rect[3] = pn->h;
+	return true;
 }
 
 bool nav_next(const Book* b, Pos* p)

@@ -15,7 +15,7 @@ from PIL import Image
 
 from . import archive, optimize, panels
 
-MANIFEST_VERSION = 1
+MANIFEST_VERSION = 2
 
 
 @dataclass
@@ -41,17 +41,16 @@ def _process_page(args) -> dict:
     with Image.open(path) as im:
         im.load()
         gray = optimize.to_gray(im)
-    page_png, _ = optimize.optimize(gray, cfg.opts, crop=True)
+    page_png, pmap = optimize.optimize_page(gray, cfg.opts)
     files[f"{stem}.png"] = page_png
+    # Panels aren't stored as images: each is a rectangle of the page image,
+    # which the reader crops and scales to the screen.
     entries = []
     w, h = gray.size
-    for n, (x1, y1, x2, y2) in enumerate(boxes, 1):
-        p = cfg.panel_pad
-        crop = gray.crop((max(0, x1 - p), max(0, y1 - p), min(w, x2 + p), min(h, y2 + p)))
-        png, _ = optimize.optimize(crop, cfg.opts, crop=False)
-        name = f"{stem}_{n}.png"
-        files[name] = png
-        entries.append({"image": name, "box": [x1, y1, x2, y2]})
+    p = cfg.panel_pad
+    for x1, y1, x2, y2 in boxes:
+        padded = (max(0, x1 - p), max(0, y1 - p), min(w, x2 + p), min(h, y2 + p))
+        entries.append({"rect": pmap.rect(padded), "box": [x1, y1, x2, y2]})
     return {"image": f"{stem}.png", "panels": entries, "_files": files}
 
 

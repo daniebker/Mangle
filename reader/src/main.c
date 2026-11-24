@@ -87,7 +87,11 @@ static void show(Reader* r, Pos p, bool force_flash)
 		const char* lines[] = { NULL, NULL, "Cannot load image:", name };
 		display_text(lines, 4, true);
 	} else {
-		compose(&r->app->scr, img, r->frame);
+		int rect[4];
+		if (nav_rect(r->book, p, rect))
+			compose_rect(&r->app->scr, img, rect, r->frame);
+		else
+			compose(&r->app->scr, img, r->frame);
 		r->turns++;
 		bool flash = force_flash || (r->app->flash_every > 0 && r->turns % r->app->flash_every == 0);
 		display_frame(r->frame, flash);

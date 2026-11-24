@@ -52,8 +52,8 @@ What it does to each volume:
 4. Pages it isn't confident about (no panels, one huge panel, too many panels, low coverage,
    lots of small fragments) get an empty panel list, so the reader shows them whole. Each one
    is listed on stderr with the reason.
-5. Writes a full-page image (white margins cropped) and one image per panel. Panels are cropped
-   from the **full-resolution original**, not the reduced page, so zoomed panels stay sharp.
+5. Writes a full-page image (white margins cropped). Panels are rectangles into that image, which
+   the reader scales up when showing them, so the ZIP is about the size of the source.
 6. For every image: grayscale → resize to fit the screen (keeping the aspect ratio) →
    auto-contrast + gamma → 16 gray levels with Floyd–Steinberg dithering → **4-bit grayscale
    PNG**.
@@ -100,22 +100,24 @@ order. It's the fastest way to check detection and ordering.
 
 ```json
 {
-  "version": 1,
+  "version": 2,
   "title": "Vol 1",
   "direction": "rtl",
   "screen": [1072, 1448],
   "pages": [
     {"image": "p001.png", "panels": []},
     {"image": "p002.png", "panels": [
-      {"image": "p002_1.png", "box": [540, 0, 1072, 620]},
-      {"image": "p002_2.png", "box": [0, 0, 530, 620]}
+      {"rect": [560, 0, 512, 600], "box": [540, 0, 1072, 620]},
+      {"rect": [0, 0, 540, 600], "box": [0, 0, 530, 620]}
     ]}
   ]
 }
 ```
 
-`panels` are in reading order. `box` is the panel's position on the original page
-(`x1, y1, x2, y2`). It's for reference and possible future features; the reader ignores it. An
+`panels` are in reading order. `rect` is the panel's position in the stored page image
+(`x, y, width, height`); the reader crops it out and scales it to the screen, so panels cost no
+extra space. `box` is the panel's position on the original page (`x1, y1, x2, y2`), for reference;
+the reader ignores it. Version 1 books, where each panel was its own `image`, still open. An
 empty `panels` list means the page is always shown whole.
 
 ## 2. Reader

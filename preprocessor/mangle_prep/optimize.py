@@ -47,18 +47,25 @@ def content_bbox(gray: Image.Image, threshold: int = 235, min_fraction: float = 
     return int(cols[0]), int(rows[0]), int(cols[-1]) + 1, int(rows[-1]) + 1
 
 
-def crop_margins(gray: Image.Image, opts: Options) -> Image.Image:
+def crop_box(gray: Image.Image, opts: Options) -> tuple[int, int, int, int]:
+    """The region crop_margins keeps (the whole image if cropping would leave a sliver)."""
+    w, h = gray.size
+    whole = (0, 0, w, h)
     box = content_bbox(gray, opts.white_threshold)
     if box is None:
-        return gray
-    w, h = gray.size
+        return whole
     x1, y1, x2, y2 = box
     p = opts.margin_pad
     x1, y1, x2, y2 = max(0, x1 - p), max(0, y1 - p), min(w, x2 + p), min(h, y2 + p)
     # Don't crop if it would leave a sliver (blank or nearly blank page).
     if (x2 - x1) < w * 0.3 or (y2 - y1) < h * 0.3:
-        return gray
-    return gray.crop((x1, y1, x2, y2))
+        return whole
+    return x1, y1, x2, y2
+
+
+def crop_margins(gray: Image.Image, opts: Options) -> Image.Image:
+    box = crop_box(gray, opts)
+    return gray if box == (0, 0, *gray.size) else gray.crop(box)
 
 
 def fit_size(size: tuple[int, int], screen: tuple[int, int], upscale: bool = True) -> tuple[int, int]:
@@ -102,6 +109,38 @@ def encode_png4(indices: np.ndarray) -> bytes:
     ihdr = struct.pack(">IIBBBBB", w, h, 4, 0, 0, 0, 0)
     return (b"\x89PNG\r\n\x1a\n" + chunk(b"IHDR", ihdr)
             + chunk(b"IDAT", zlib.compress(raw, 9)) + chunk(b"IEND", b""))
+
+
+@dataclass
+class PageMap:
+    """Where the source page ended up in the optimised image: source pixel
+    (x, y) lands at ((x - x0) * sx, (y - y0) * sy)."""
+    x0: int = 0
+    y0: int = 0
+    sx: float = 1.0
+    sy: float = 1.0
+    size: tuple[int, int] = (0, 0)
+
+    def rect(self, box: tuple[int, int, int, int]) -> list[int]:
+        """Map a source-pixel box to [x, y, w, h] in the optimised image."""
+        x1 = min(max(0, int(round((box[0] - self.x0) * self.sx))), self.size[0] - 1)
+        y1 = min(max(0, int(round((box[1] - self.y0) * self.sy))), self.size[1] - 1)
+        x2 = min(max(x1 + 1, int(round((box[2] - self.x0) * self.sx))), self.size[0])
+        y2 = min(max(y1 + 1, int(round((box[3] - self.y0) * self.sy))), self.size[1])
+        return [x1, y1, x2 - x1, y2 - y1]
+
+
+def optimize_page(gray: Image.Image, opts: Options) -> tuple[bytes, PageMap]:
+    """Page pipeline: crop margins, fit to the screen, tone, quantise.
+    Returns (png, map from source pixels to the output image)."""
+    x1, y1, x2, y2 = crop_box(gray, opts)
+    cropped = gray.crop((x1, y1, x2, y2)) if (x1, y1, x2, y2) != (0, 0, *gray.size) else gray
+    size = fit_size(cropped.size, opts.screen, opts.upscale)
+    if size != cropped.size:
+        cropped = cropped.resize(size, Image.Resampling.LANCZOS)
+    cropped = tone(cropped, opts)
+    png = encode_png4(quantize(cropped, opts.dither))
+    return png, PageMap(x1, y1, size[0] / (x2 - x1), size[1] / (y2 - y1), size)
 
 
 def optimize(gray: Image.Image, opts: Options, crop: bool) -> tuple[bytes, tuple[int, int]]:

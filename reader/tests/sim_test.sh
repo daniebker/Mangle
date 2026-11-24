@@ -36,9 +36,9 @@ grep 'mangle: show' "$TMP/err" | sed 's/.*show //' >"$TMP/shown"
 cat >"$TMP/want" <<W
 p001.png page=0 panel=0 mode=panel
 p002.png page=1 panel=-1 mode=panel
-p002_1.png page=1 panel=0 mode=panel
-p002_2.png page=1 panel=1 mode=panel
-p002_1.png page=1 panel=0 mode=panel
+p002.png page=1 panel=0 mode=panel
+p002.png page=1 panel=1 mode=panel
+p002.png page=1 panel=0 mode=panel
 p002.png page=1 panel=0 mode=page
 p003.png page=2 panel=0 mode=page
 p004.png page=3 panel=0 mode=page
@@ -53,11 +53,11 @@ diff "$TMP/want" "$TMP/shown" || fail "unexpected navigation"
 printf 'tap 10 400\ntap 10 400\ntap 590 400\ntap 590 400\nquit\n' |
 	$BIN -v -s "$TMP/state_ov" "$ZIP" >/dev/null 2>"$TMP/err"
 grep 'mangle: show' "$TMP/err" | sed 's/.*show \([^ ]*\).*/\1/' | tr '\n' ' ' >"$TMP/shown"
-[ "$(cat "$TMP/shown")" = "p001.png p002.png p002_1.png p002.png p001.png " ] || fail "overview going back: $(cat "$TMP/shown")"
+[ "$(cat "$TMP/shown")" = "p001.png p002.png p002.png p002.png p001.png " ] || fail "overview going back: $(cat "$TMP/shown")"
 
 # -O: no overview, straight to the first panel.
 printf 'tap 10 400\nquit\n' | $BIN -O -v -s "$TMP/state_noov" "$ZIP" >/dev/null 2>"$TMP/err"
-grep -q 'show p002_1.png page=1 panel=0' "$TMP/err" || fail "-O should skip the overview"
+grep -q 'show p002.png page=1 panel=0' "$TMP/err" || fail "-O should skip the overview"
 
 # Resume: reopening shows the saved position.
 echo quit | $BIN -v -s "$TMP/state" "$ZIP" >/dev/null 2>"$TMP/err"

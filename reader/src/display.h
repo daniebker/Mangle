@@ -32,3 +32,6 @@ void compose(const Screen* s, const Image* img, uint8_t* buf);
 // showing. Blocks until the device wakes. Returns 0 if it suspended and woke,
 // -1 if suspending isn't possible here.
 int display_suspend(void);
+
+// Show a rectangle {x, y, w, h} of an image, scaled to fit the screen.
+void compose_rect(const Screen* s, const Image* img, const int rect[4], uint8_t* buf);

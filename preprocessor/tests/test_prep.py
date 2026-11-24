@@ -81,14 +81,17 @@ def test_build(tmp_path, monkeypatch, detect):
     build(src, out, cfg)
     with zipfile.ZipFile(out) as zf:
         m = json.loads(zf.read("manifest.json"))
-        assert m["version"] == 1 and m["screen"] == [600, 800] and m["direction"] == "rtl"
+        assert m["version"] == 2 and m["screen"] == [600, 800] and m["direction"] == "rtl"
         assert len(m["pages"]) == len(expected)
         for page in m["pages"]:
-            for name in [page["image"]] + [p["image"] for p in page["panels"]]:
-                assert zf.getinfo(name).compress_type == zipfile.ZIP_STORED
-                im = Image.open(zf.open(name))
-                assert im.width <= 600 and im.height <= 800
-                assert max(im.size[0] / 600, im.size[1] / 800) > 0.99   # fits one side
+            name = page["image"]
+            assert zf.getinfo(name).compress_type == zipfile.ZIP_STORED
+            im = Image.open(zf.open(name))
+            assert im.width <= 600 and im.height <= 800
+            assert max(im.size[0] / 600, im.size[1] / 800) > 0.99   # fits one side
+            for p in page["panels"]:    # panels are rectangles inside the page image
+                x, y, w, h = p["rect"]
+                assert w > 0 and h > 0 and x >= 0 and y >= 0 and x + w <= im.width and y + h <= im.height
         if detect:
             assert m["pages"][0]["panels"] == []           # cover: whole page
             exp = list(expected.values())
@@ -121,3 +124,17 @@ def test_build_with_kumiko(tmp_path):
         assert len(got) == len(boxes)
         for g, e in zip(got, boxes):
             assert all(abs(a - b) < 80 for a, b in zip(g, e)), (g, e)
+
+
+def test_page_map_rects():
+    # White margins are cropped, so source boxes shift and scale into the stored page.
+    img = Image.new("L", (1000, 1500), 255)
+    img.paste(0, (100, 200, 900, 1300))
+    opts = optimize.Options(screen=(500, 750))
+    png, m = optimize.optimize_page(img, opts)
+    assert m.size[0] <= 500 and m.size[1] <= 750
+    x, y, w, h = m.rect((100, 200, 900, 1300))
+    assert w >= m.size[0] - 20 and h >= m.size[1] - 20   # inside the 8px pad
+    assert 0 <= x < 20 and 0 <= y < 20
+    x, y, w, h = m.rect((0, 0, 5000, 5000))               # clamped to the image
+    assert (x, y) == (0, 0) and (w, h) == m.size

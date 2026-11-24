@@ -1,5 +1,10 @@
 # Changelog
 
+## Unreleased
+
+### Changed
+- Books are about 4x smaller: panels are stored as rectangles of the page image (manifest version 2) instead of separate upscaled images, and the reader crops and scales them. Version 1 books still open. Panels are a little softer, since they are scaled from the screen-size page.
+
 ## v0.4.0
 
 ### Added

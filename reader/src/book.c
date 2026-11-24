@@ -33,7 +33,7 @@ static void free_pages(Book* b)
 	for (int i = 0; i < b->npages; i++) {
 		free(b->pages[i].image);
 		for (int j = 0; j < b->pages[i].npanels; j++)
-			free(b->pages[i].panels[j]);
+			free(b->pages[i].panels[j].image);
 		free(b->pages[i].panels);
 	}
 	free(b->pages);
@@ -51,7 +51,7 @@ int book_parse_manifest(Book* b, const char* json, size_t len, char* err, size_t
 	int rc = -1;
 
 	cJSON* ver = cJSON_GetObjectItemCaseSensitive(root, "version");
-	if (!cJSON_IsNumber(ver) || ver->valueint != 1) {
+	if (!cJSON_IsNumber(ver) || (ver->valueint != 1 && ver->valueint != 2)) {
 		ERR("unsupported manifest version");
 		goto out;
 	}
@@ -87,13 +87,24 @@ int book_parse_manifest(Book* b, const char* json, size_t len, char* err, size_t
 		cJSON* panels = cJSON_GetObjectItemCaseSensitive(p, "panels");
 		int    np     = cJSON_IsArray(panels) ? cJSON_GetArraySize(panels) : 0;
 		if (np) {
-			pg->panels = calloc((size_t) np, sizeof(char*));
+			pg->panels = calloc((size_t) np, sizeof(Panel));
 			cJSON* q;
 			cJSON_ArrayForEach(q, panels)
 			{
 				cJSON* qi = cJSON_GetObjectItemCaseSensitive(q, "image");
-				if (cJSON_IsString(qi))
-					pg->panels[pg->npanels++] = dupstr(qi->valuestring);
+				cJSON* qr = cJSON_GetObjectItemCaseSensitive(q, "rect");
+				Panel* pn = &pg->panels[pg->npanels];
+				if (cJSON_IsString(qi)) {
+					pn->image = dupstr(qi->valuestring);
+					pg->npanels++;
+				} else if (cJSON_IsArray(qr) && cJSON_GetArraySize(qr) == 4) {
+					pn->x = cJSON_GetArrayItem(qr, 0)->valueint;
+					pn->y = cJSON_GetArrayItem(qr, 1)->valueint;
+					pn->w = cJSON_GetArrayItem(qr, 2)->valueint;
+					pn->h = cJSON_GetArrayItem(qr, 3)->valueint;
+					if (pn->w > 0 && pn->h > 0)
+						pg->npanels++;
+				}
 			}
 		}
 	}

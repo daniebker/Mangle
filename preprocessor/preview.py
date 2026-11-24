@@ -30,7 +30,7 @@ HTML = r"""<!doctype html>
  #bar{padding:6px 12px;background:#222;display:flex;gap:16px;align-items:center}
  #main{flex:1;display:flex;gap:12px;padding:12px;min-height:0;justify-content:center}
  .pane{display:flex;flex-direction:column;align-items:center;min-height:0;flex:1}
- .pane img{max-width:100%;max-height:100%;object-fit:contain;background:#fff}
+ .pane canvas,.pane img{max-width:100%;max-height:100%;object-fit:contain;background:#fff}
  .pane small{opacity:.7;margin-bottom:4px}
  #src{display:none}
  button{background:#444;color:#eee;border:1px solid #666;border-radius:4px;padding:4px 10px;cursor:pointer}
@@ -39,15 +39,23 @@ HTML = r"""<!doctype html>
  <button id="fwd"></button><button id="mode">Toggle mode (Space)</button><button id="back"></button></div>
 <div id="main">
  <div class="pane" id="src"><small>original + detected boxes</small><img id="srcimg"></div>
- <div class="pane"><small>Kindle image (as shown)</small><img id="img"></div>
+ <div class="pane"><small>Kindle image (as shown)</small><canvas id="cv" style="max-width:100%;max-height:100%;object-fit:contain;background:#fff"></canvas></div>
 </div>
 <script>
 const M = __MANIFEST__, SRC = __SOURCES__, rtl = M.direction === "rtl";
 let page = 0, panel = 0, mode = "panel";
 const n = p => M.pages[p].panels.length;
+const cache = {};
+function draw(name, r) {
+  const cv = document.getElementById("cv");
+  const go = im => { const [x, y, w, h] = r || [0, 0, im.naturalWidth, im.naturalHeight];
+    cv.width = w; cv.height = h; cv.getContext("2d").drawImage(im, x, y, w, h, 0, 0, w, h); };
+  if (cache[name]) return go(cache[name]);
+  const im = new Image(); im.onload = () => { cache[name] = im; go(im); }; im.src = name;
+}
 function show() {
   const pg = M.pages[page], usePanel = mode === "panel" && n(page);
-  document.getElementById("img").src = usePanel ? pg.panels[panel].image : pg.image;
+  draw(pg.image, usePanel ? pg.panels[panel].rect : null);
   document.getElementById("pos").textContent =
     `${mode} mode · page ${page + 1}/${M.pages.length}` +
     (usePanel ? ` · panel ${panel + 1}/${n(page)}` : n(page) ? "" : " · whole page");

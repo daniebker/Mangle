@@ -45,13 +45,13 @@ static void test_manifest(void)
 	Book* b = fake_book();
 	CHECK(b->npages == 4 && b->rtl && b->screen_w == 600 && b->screen_h == 800);
 	CHECK(strcmp(b->title, "T") == 0);
-	CHECK(b->pages[1].npanels == 2 && strcmp(b->pages[1].panels[1], "p002_2.png") == 0);
+	CHECK(b->pages[1].npanels == 2 && strcmp(b->pages[1].panels[1].image, "p002_2.png") == 0);
 
 	book_close(b);
 	Book bad = { 0 };
 	char err[128];
 	CHECK(book_parse_manifest(&bad, "{", 1, err, sizeof(err)) != 0);
-	const char* v2 = "{\"version\":2,\"pages\":[{\"image\":\"a\"}]}";
+	const char* v2 = "{\"version\":3,\"pages\":[{\"image\":\"a\"}]}";
 	CHECK(book_parse_manifest(&bad, v2, strlen(v2), err, sizeof(err)) != 0);
 	const char* nopages = "{\"version\":1,\"pages\":[]}";
 	CHECK(book_parse_manifest(&bad, nopages, strlen(nopages), err, sizeof(err)) != 0);
@@ -62,6 +62,32 @@ static void test_manifest(void)
 	free(l.title);
 	free(l.pages[0].image);
 	free(l.pages);
+}
+
+static void test_rect(void)
+{
+	const char* m = "{\"version\":2,\"pages\":[{\"image\":\"a.png\",\"panels\":[{\"rect\":[10,20,30,40],\"box\":[0,0,1,1]},{\"rect\":[0,0,0,5]}]}]}";
+	Book* b = calloc(1, sizeof(Book));
+	pthread_mutex_init(&b->lock, NULL);
+	char err[128];
+	CHECK(book_parse_manifest(b, m, strlen(m), err, sizeof(err)) == 0);
+	CHECK(b->pages[0].npanels == 1);    // the empty rect is dropped
+	Pos p = { 0, 0, MODE_PANEL };
+	int r[4];
+	CHECK(nav_rect(b, p, r) && r[0] == 10 && r[1] == 20 && r[2] == 30 && r[3] == 40);
+	CHECK(strcmp(nav_image(b, p), "a.png") == 0);
+	p.panel = PANEL_OVERVIEW;
+	CHECK(!nav_rect(b, p, r));
+
+	// compose_rect: a 2x2 patch of a 4x4 image fills a 8x8 screen; left half black, right white.
+	uint8_t px[16] = { 9, 9, 9, 9, 9, 0, 255, 9, 9, 0, 255, 9, 9, 9, 9, 9 };
+	Image   img    = { 4, 4, px };
+	Screen  s      = { .width = 8, .height = 8 };
+	uint8_t out[64];
+	int     rc[4] = { 1, 1, 2, 2 };
+	compose_rect(&s, &img, rc, out);
+	CHECK(out[3 * 8 + 0] == 0 && out[3 * 8 + 7] == 255 && out[0] == 0 && out[7] == 255);
+	book_close(b);
 }
 
 #define IMG(p) (nav_image(b, p))
@@ -326,6 +352,7 @@ static void test_cache(const char* zip)
 int main(int argc, char** argv)
 {
 	test_manifest();
+	test_rect();
 	test_nav();
 	test_gesture();
 	test_touch();

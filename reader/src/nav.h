@@ -27,6 +27,10 @@ Pos nav_start(const Book* b);
 // Image to show at a position (panel image in panel mode, else the page).
 const char* nav_image(const Book* b, Pos p);
 
+// Part of nav_image's image to show (a panel's rectangle). Returns false when
+// the whole image is shown.
+bool nav_rect(const Book* b, Pos p, int rect[4]);
+
 // Step forward/back. Returns false (and leaves *p alone) at either end.
 // Panel mode, forward: [overview] -> panel 1 -> ... -> last panel -> next page.
 // Back runs the same sequence in reverse.

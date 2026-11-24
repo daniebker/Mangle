@@ -12,10 +12,17 @@ typedef struct {
 	uint8_t* px;    // 8-bit grayscale, w*h bytes
 } Image;
 
+// A panel is a rectangle of the page image (manifest v2). Version 1 books
+// stored each panel as its own image instead.
+typedef struct {
+	char* image;       // own image name, or NULL: use the page image
+	int   x, y, w, h;  // rectangle of the page image (when image is NULL)
+} Panel;
+
 typedef struct {
 	char*  image;      // full-page image name
 	int    npanels;
-	char** panels;     // panel image names, in reading order
+	Panel* panels;     // in reading order
 } Page;
 
 typedef struct {
