@@ -60,7 +60,7 @@ def detect_all(pages: list[Path], cfg: Config) -> list[list[panels.Box]]:
         return [[] for _ in pages]
     kumiko = panels.find_kumiko(cfg.kumiko)
     if kumiko:
-        print(f"Detecting panels with Kumiko ({kumiko})...", file=cfg.log)
+        print(f"Detecting panels with Kumiko ({kumiko})...(This may take a while)", file=cfg.log)
         try:
             found = panels.detect_kumiko(kumiko, pages[0].parent, cfg.kumiko_python)
             return [found.get(p.name, []) for p in pages]

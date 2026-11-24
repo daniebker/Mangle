@@ -6,3 +6,4 @@ __pycache__/
 reader/build/
 reader/third_party/FBInk/
 dist/
+*.cbz
