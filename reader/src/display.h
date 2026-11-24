@@ -27,3 +27,8 @@ int display_text(const char* const* lines, int n, bool flash);
 // Compose an image centred on a white full-screen buffer. Images larger than
 // the screen (wrong --screen at preprocessing) are shrunk, nearest-neighbour.
 void compose(const Screen* s, const Image* img, uint8_t* buf);
+
+// Put the device into standby (suspend to RAM) with the current screen left
+// showing. Blocks until the device wakes. Returns 0 if it suspended and woke,
+// -1 if suspending isn't possible here.
+int display_suspend(void);

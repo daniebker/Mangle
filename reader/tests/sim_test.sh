@@ -87,4 +87,14 @@ echo "not a zip" >"$TMP/lib/bad.zip"
 printf 'tap 1 1\n' | $BIN -s "$TMP/state" "$TMP/lib/bad.zip" >"$TMP/out" 2>&1 || fail "bad zip crashed"
 grep -q 'Cannot open book' "$TMP/out" || fail "bad zip message"
 
+
+# Sleep: after -t idle seconds the cover is drawn and the device suspended; the page is redrawn on wake.
+printf 'tap 10 400\nsleep 2500\nquit\n' | $BIN -t 1 -v -s "$TMP/state_sl" "$ZIP" >"$TMP/out" 2>"$TMP/err"
+grep -q 'mangle: sleep' "$TMP/err" || fail "no sleep after idle"
+grep -q '^SUSPEND' "$TMP/out" || fail "device not suspended"
+[ "$(grep -c 'mangle: show' "$TMP/err")" = 3 ] || fail "wake should redraw the page"
+# Settings: the menu's Settings entry toggles sleep off and persists it.
+printf 'tap 300 5\ntap 200 5\ntap 300 80\ntap 10 20\nsleep 2500\nquit\n' | $BIN -t 1 -v -s "$TMP/state_st" "$ZIP" >/dev/null 2>"$TMP/err"
+grep -q 'sleep=0' "$TMP/state_st/settings" || fail "settings not saved"
+grep -q 'mangle: sleep' "$TMP/err" && fail "slept with sleep turned off"
 echo "sim tests passed"

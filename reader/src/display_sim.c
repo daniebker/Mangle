@@ -56,3 +56,10 @@ int display_text(const char* const* lines, int n, bool flash)
 	fflush(stdout);
 	return 0;
 }
+
+int display_suspend(void)
+{
+	printf("SUSPEND\n");
+	fflush(stdout);
+	return 0;
+}

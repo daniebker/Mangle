@@ -1,5 +1,11 @@
 # Changelog
 
+## v0.4.0
+
+### Added
+- Sleep: after 2 minutes idle the book's cover (page 1, or page 2 if the first is blank) is drawn and the Kindle is suspended to RAM; the power button wakes it and reading resumes. `-t SEC` changes the delay.
+- Menu bar `Settings` entry with a Sleep on/off switch, saved in the state folder.
+
 ## v0.3.0
 
 ### Added

@@ -2,6 +2,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <unistd.h>
 
 #include "display.h"
 #include "fbink.h"
@@ -87,4 +88,19 @@ int display_text(const char* const* lines, int n, bool flash)
 	c.is_flashing = flash;
 	c.wfm_mode    = WFM_GC16;
 	return fbink_refresh(fbfd, 0, 0, 0, 0, &c);
+}
+
+int display_suspend(void)
+{
+	// Let the e-ink panel finish its last refresh before the CPU stops.
+	sleep(2);
+	sync();
+	FILE* f = fopen("/sys/power/state", "w");
+	if (!f)
+		return -1;
+	// Blocks inside the write until something (the power button) wakes the device.
+	int rc = fputs("mem", f) < 0 ? -1 : 0;
+	if (fclose(f) != 0)
+		rc = -1;
+	return rc;
 }

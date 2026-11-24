@@ -16,6 +16,7 @@
 #include "input.h"
 #include "library.h"
 #include "nav.h"
+#include "settings.h"
 #include "state.h"
 
 static volatile sig_atomic_t quit;
@@ -55,6 +56,8 @@ typedef struct {
 	int         flash_every;    // full refresh every N turns
 	bool        verbose;
 	bool        library;    // started with a library folder
+	Settings    settings;
+	int         idle_ms;    // inactivity before the sleep screen
 } App;
 
 static void message(const char* a, const char* b)
@@ -101,22 +104,88 @@ static void show(Reader* r, Pos p, bool force_flash)
 	cache_prefetch(r->cache, want, 2);
 }
 
+static void fill_rows(uint8_t* f, const Screen* s, int y0, int y1, uint8_t v)
+{
+	for (int y = y0; y < y1 && y < s->height; y++)
+		memset(f + (size_t) y * s->width, v, s->width);
+}
+
+static int ui_scale(const Screen* s)
+{
+	return s->width >= 900 ? 3 : 2;
+}
+
+// Settings screen. Returns true if the program should quit.
+static bool settings_screen(Reader* r)
+{
+	App*          app   = r->app;
+	const Screen* s     = &app->scr;
+	int           scale = ui_scale(s);
+	int           row_h = FONT_H * scale + 2 * scale * 8;
+	uint8_t*      f     = r->frame;
+	int           pad   = scale * 8;
+
+	for (;;) {
+		fill_rows(f, s, 0, s->height, 255);
+		font_draw(f, s->width, s->height, pad, scale * 8, scale, "< Back", 0);
+		fill_rows(f, s, row_h - 3, row_h, 0);
+		char line[64];
+		snprintf(line, sizeof(line), "Power off after %d min idle: %s", app->idle_ms / 60000 ? app->idle_ms / 60000 : 1,
+			 app->settings.sleep ? "ON" : "OFF");
+		font_draw(f, s->width, s->height, pad, row_h + scale * 8, scale, line, 0);
+		fill_rows(f, s, 2 * row_h - 1, 2 * row_h, 128);
+		font_draw(f, s->width, s->height, pad, 2 * row_h + scale * 8, scale,
+			  "Shows the cover and suspends.", 96);
+		display_frame(f, true);
+
+		for (;;) {
+			InEvent ev;
+			if (quit)
+				return true;
+			int rc = input_wait(&ev, -1);
+			if (rc <= 0)
+				continue;
+			if (ev.kind == IN_QUIT)
+				return true;
+			if (ev.kind == IN_KEY) {
+				Gesture g = { 0 };
+				if (gesture_key(&g, ev.code, false) == ACT_EXIT)
+					return false;
+				continue;
+			}
+			if (ev.kind != IN_TAP)
+				continue;
+			if (ev.y < row_h)
+				return false;
+			if (ev.y < 2 * row_h) {
+				app->settings.sleep = !app->settings.sleep;
+				if (settings_save(app->state_dir, &app->settings) != 0)
+					fprintf(stderr, "mangle: cannot save settings: %s\n", strerror(errno));
+				break;
+			}
+		}
+	}
+}
+
 // Menu bar across the top of the current page. Returns true if the reader
 // should go back to the library (or quit, when there is no library).
 static bool menu(Reader* r, Pos p)
 {
 	const Screen* s     = &r->app->scr;
-	int           scale = s->width >= 900 ? 3 : 2;
+	int           scale = ui_scale(s);
 	int           bar_h = FONT_H * scale + 2 * scale * 6;
+	int           cw    = FONT_W * scale;
 	uint8_t*      f     = r->frame;
 
-	for (int y = 0; y < bar_h && y < s->height; y++)
-		memset(f + (size_t) y * s->width, y >= bar_h - 3 ? 0 : 255, s->width);
-	const char* label = r->app->library ? "< Library" : "< Exit";
-	font_draw(f, s->width, s->height, scale * 8, scale * 6, scale, label, 0);
-	const char* hint = "Tap page to close";
-	int         hw   = (int) strlen(hint) * FONT_W * scale;
-	font_draw(f, s->width, s->height, s->width - hw - scale * 8, scale * 6, scale, hint, 96);
+	const char* lib   = r->app->library ? "< Library" : "< Exit";
+	const char* set   = "Settings";
+	int         lib_x = cw, set_x = lib_x + (int) strlen(lib) * cw + 4 * cw;
+	int         set_end = set_x + (int) strlen(set) * cw + 2 * cw;
+
+	fill_rows(f, s, 0, bar_h, 255);
+	fill_rows(f, s, bar_h - 3, bar_h, 0);
+	font_draw(f, s->width, s->height, lib_x, scale * 6, scale, lib, 0);
+	font_draw(f, s->width, s->height, set_x, scale * 6, scale, set, 0);
 	display_frame(f, false);
 
 	bool leave = false;
@@ -130,7 +199,11 @@ static bool menu(Reader* r, Pos p)
 			break;
 		}
 		if (ev.kind == IN_TAP) {
-			leave = ev.y < bar_h && ev.x < s->width / 2;
+			if (ev.y < bar_h && ev.x >= set_x - 2 * cw && ev.x < set_end) {
+				leave = settings_screen(r);
+				break;
+			}
+			leave = ev.y < bar_h && ev.x < set_x - 2 * cw;
 			break;
 		}
 		if (ev.kind == IN_KEY) {
@@ -140,8 +213,52 @@ static bool menu(Reader* r, Pos p)
 		}
 	}
 	if (!leave)
-		show(r, p, false);    // repaint the page over the bar
+		show(r, p, true);    // repaint the page over the bar
 	return leave;
+}
+
+// Is this image (almost) a blank page?
+static bool mostly_white(const Image* img)
+{
+	size_t n = (size_t) img->w * img->h, dark = 0;
+	for (size_t i = 0; i < n; i++)
+		dark += img->px[i] < 200;
+	return dark * 100 < n;    // under 1% ink
+}
+
+// Put the book's cover on screen (page 0, or page 1 if page 0 is blank), then
+// suspend the device until it is woken. If suspending isn't possible, wait for
+// any touch or key instead. Returns true if the program should quit.
+static bool sleep_screen(Reader* r)
+{
+	Book* b = r->book;
+	Image img;
+	bool  ok = b->npages > 0 && book_load_image(b, b->pages[0].image, &img) == 0;
+	if (ok && mostly_white(&img) && b->npages > 1) {
+		Image second;
+		if (book_load_image(b, b->pages[1].image, &second) == 0) {
+			image_free(&img);
+			img = second;
+		}
+	}
+	if (ok) {
+		compose(&r->app->scr, &img, r->frame);
+		image_free(&img);
+		display_frame(r->frame, true);
+	}
+	if (r->app->verbose)
+		fprintf(stderr, "mangle: sleep\n");
+	if (display_suspend() == 0)
+		return quit;
+	fprintf(stderr, "mangle: cannot suspend: %s\n", strerror(errno));
+	while (!quit) {
+		InEvent ev;
+		int     rc = input_wait(&ev, -1);
+		if (rc <= 0)
+			continue;
+		return ev.kind == IN_QUIT;
+	}
+	return true;
 }
 
 static void save(Reader* r, Pos p)
@@ -178,10 +295,18 @@ static void read_book(App* app, const char* path)
 	state_set_last(app->state_dir, path);
 	show(&r, pos, true);
 
-	Gesture g = { 0 };
+	Gesture g        = { 0 };
+	int64_t last_act = now_ms();
 	while (!quit) {
 		InEvent ev;
-		int     rc = input_wait(&ev, gesture_timeout(&g, now_ms()));
+		int     wait = gesture_timeout(&g, now_ms());
+		if (app->settings.sleep && app->idle_ms > 0) {
+			int64_t left = last_act + app->idle_ms - now_ms();
+			int     idle = left > 0 ? (int) left : 0;
+			if (wait < 0 || idle < wait)
+				wait = idle;
+		}
+		int rc = input_wait(&ev, wait);
 		Action  acts[2];
 		int     nact = 0;
 		if (rc < 0)
@@ -189,6 +314,14 @@ static void read_book(App* app, const char* path)
 		if (rc == 0) {
 			acts[nact] = gesture_expire(&g, now_ms());
 			nact += acts[nact] != ACT_NONE;
+			if (nact == 0 && app->settings.sleep && app->idle_ms > 0 && now_ms() - last_act >= app->idle_ms) {
+				g.pending = false;
+				if (sleep_screen(&r))
+					break;
+				show(&r, pos, true);
+				last_act = now_ms();
+				continue;
+			}
 		} else if (ev.kind == IN_QUIT) {
 			break;
 		} else if (ev.kind == IN_TAP) {
@@ -199,6 +332,8 @@ static void read_book(App* app, const char* path)
 			acts[nact++] = gesture_key(&g, ev.code, b->rtl);
 		}
 
+		if (rc > 0)
+			last_act = now_ms();
 		bool done = false;
 		for (int i = 0; i < nact && !done; i++) {
 			Pos old = pos;
@@ -247,6 +382,7 @@ static void usage(const char* argv0)
 		"  -l DIR   library folder: show a book list (and return to it after reading)\n"
 		"  -s DIR   folder for resume state (default: ./state)\n"
 		"  -r       reopen the last book read\n"
+		"  -t SEC   sleep screen (book cover) after SEC idle seconds (default 120)\n"
 		"  -f N     full (flashing) refresh every N page turns, 0 = never (default 8)\n"
 		"  -O       panel mode: don't show a page whole before its panels\n"
 		"  -v       log every image shown\n",
@@ -255,11 +391,11 @@ static void usage(const char* argv0)
 
 int main(int argc, char** argv)
 {
-	App         app     = { .state_dir = "state", .flash_every = 8 };
+	App         app     = { .state_dir = "state", .flash_every = 8, .idle_ms = 120000 };
 	const char* library = NULL;
 	bool        resume  = false;
 	int         c;
-	while ((c = getopt(argc, argv, "l:s:rf:Ovh")) != -1) {
+	while ((c = getopt(argc, argv, "l:s:rf:t:Ovh")) != -1) {
 		switch (c) {
 			case 'l':
 				library = optarg;
@@ -275,6 +411,9 @@ int main(int argc, char** argv)
 				break;
 			case 'O':
 				nav_set_overview(false);
+				break;
+			case 't':
+				app.idle_ms = atoi(optarg) * 1000;
 				break;
 			case 'v':
 				app.verbose = true;
@@ -293,6 +432,7 @@ int main(int argc, char** argv)
 
 	setup_signals();
 	mkdir(app.state_dir, 0755);
+	settings_load(app.state_dir, &app.settings);
 	if (display_open(&app.scr) != 0)
 		return 1;
 	if (input_open(app.scr.width, app.scr.height) != 0) {
