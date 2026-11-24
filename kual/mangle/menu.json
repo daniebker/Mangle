@@ -1,0 +1,12 @@
+{
+	"items": [
+		{
+			"name": "Mangle",
+			"priority": 0,
+			"items": [
+				{ "name": "Library", "priority": 1, "action": "bin/mangle.sh", "params": "library", "exitmenu": true },
+				{ "name": "Resume last book", "priority": 2, "action": "bin/mangle.sh", "params": "resume", "exitmenu": true }
+			]
+		}
+	]
+}
