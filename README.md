@@ -244,11 +244,6 @@ Preprocessor tests: `cd preprocessor && python -m pytest tests`.
 
 ## Status and open questions
 
-- **Not yet run on a real Kindle.** Everything above was tested on the desktop with the
-  simulator backend. Both Kindle targets build with koxtoolchain 2026.08 (`kindlehf` needs
-  glibc 2.17, `kindlepw2` glibc 2.4), but the binaries haven't been run. Expect the touch input
-  to need tuning on the device. Some models report mirrored or swapped coordinates; set
-  `MANGLE_TOUCH=swap,mirror_x,mirror_y` in `mangle.conf` as needed.
 - **Target model and firmware** are still open. They decide `--screen`, `kindlehf` vs
   `kindlepw2`, and whether there are page-turn buttons (the reader handles `KEY_PAGEUP`/`DOWN`
   and the arrow keys).
