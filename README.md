@@ -30,6 +30,7 @@ python prep.py "My Manga v01.cbz" -o "My Manga v01.zip" --screen 1072x1448 --dir
 | `--no-panels` | | Skip panel detection (page mode only) |
 | `--gamma G` | `1.8` | Darkens mid-tones for e-ink (`1` = off) |
 | `--no-dither` | | Reduce to 16 grays without dithering |
+| `--pdf-dpi N` | `200` | Render resolution for PDF input |
 | `-j N` | CPU count | Worker processes |
 
 You can pass several input files with `-o some_folder/`.
@@ -41,7 +42,7 @@ Check your model before converting a whole library.
 
 What it does to each volume:
 
-1. Extracts the images (JPEG, PNG, WebP, GIF, BMP), skips `__MACOSX` and hidden files, and sorts
+1. Extracts the images (for a PDF, renders each page with pypdfium2; JPEG, PNG, WebP, GIF, BMP), skips `__MACOSX` and hidden files, and sorts
    pages in natural order (`page2` before `page10`).
 2. Finds panels on the full-resolution pages with [Kumiko](https://github.com/njean42/kumiko).
    If Kumiko isn't available or fails, it uses a simpler built-in OpenCV detector, which works
@@ -145,8 +146,9 @@ empty `panels` list means the page is always shown whole.
 - The page, panel and mode are saved for each book and restored when you open it again. The
   library shows how far you've got in each book.
 
-Library screen: tap a book to open it. Tap the bottom row (left/right half) to change page, and
-tap the top row to exit.
+Library screen: a shelf of covers (the first page of each book) with the title and progress
+under each one. Tap a cover to open it, tap the bottom strip (left/right half) to change shelf
+page, and tap the top strip to exit.
 
 ### Building
 

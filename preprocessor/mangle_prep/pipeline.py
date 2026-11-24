@@ -28,6 +28,7 @@ class Config:
     kumiko_python: str | None = None  # interpreter for Kumiko; default: this one
     panel_pad: int = 6              # source pixels added around each panel crop
     jobs: int | None = None
+    pdf_dpi: int = 200              # render resolution for PDF input
     opts: optimize.Options = field(default_factory=optimize.Options)
     log: object = sys.stderr
 
@@ -81,7 +82,7 @@ def build(input_path: str | Path, output_path: str | Path, cfg: Config) -> dict:
     rtl = cfg.direction == "rtl"
     cfg.opts.screen = cfg.screen
     with tempfile.TemporaryDirectory(prefix="mangle-") as tmp:
-        pages = archive.extract_pages(input_path, Path(tmp) / "pages")
+        pages = archive.extract_pages(input_path, Path(tmp) / "pages", cfg.pdf_dpi)
         print(f"{len(pages)} pages", file=cfg.log)
 
         raw = detect_all(pages, cfg)

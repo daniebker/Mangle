@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Preprocess a manga ZIP/CBZ for the Mangle Kindle reader.
+"""Preprocess a manga ZIP/CBZ/PDF for the Mangle Kindle reader.
 
     prep.py input.cbz -o output.zip --screen 1072x1448 --direction rtl
 """
@@ -26,7 +26,7 @@ def screen_size(s: str) -> tuple[int, int]:
 
 def main(argv=None) -> int:
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    ap.add_argument("input", nargs="+", help="manga .zip/.cbz file(s)")
+    ap.add_argument("input", nargs="+", help="manga .zip/.cbz/.pdf file(s)")
     ap.add_argument("-o", "--output", help="output ZIP (or folder when several inputs are given)")
     ap.add_argument("--screen", type=screen_size, default=(1072, 1448),
                     help="target screen WIDTHxHEIGHT in portrait (default 1072x1448)")
@@ -38,6 +38,7 @@ def main(argv=None) -> int:
     ap.add_argument("--kumiko-python", help="Python interpreter to run Kumiko with (default: this one)")
     ap.add_argument("--gamma", type=float, default=1.8, help="gamma for e-ink (default 1.8, 1 = off)")
     ap.add_argument("--no-dither", action="store_true", help="quantise to 16 grays without dithering")
+    ap.add_argument("--pdf-dpi", type=int, default=200, help="render resolution for PDF input (default 200)")
     ap.add_argument("-j", "--jobs", type=int, help="worker processes (default: CPU count)")
     a = ap.parse_args(argv)
 
@@ -56,7 +57,7 @@ def main(argv=None) -> int:
             ap.error(f"output would overwrite the input: {out}")
         cfg = Config(
             screen=a.screen, direction=a.direction, title=a.title if len(a.input) == 1 else None,
-            detect=not a.no_panels, kumiko=a.kumiko, kumiko_python=a.kumiko_python, jobs=a.jobs,
+            detect=not a.no_panels, kumiko=a.kumiko, kumiko_python=a.kumiko_python, jobs=a.jobs, pdf_dpi=a.pdf_dpi,
             opts=Options(gamma=a.gamma, dither=not a.no_dither),
         )
         print(f"== {src}", file=sys.stderr)

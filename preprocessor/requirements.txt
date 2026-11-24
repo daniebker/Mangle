@@ -4,3 +4,4 @@ numpy>=1.24
 opencv-python-headless>=4.8,<5
 # Needed by Kumiko itself (it imports requests at startup).
 requests
+pypdfium2

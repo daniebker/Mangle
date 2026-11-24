@@ -23,6 +23,7 @@ export MANGLE_SIM_SCREEN=600x800
 
 # Prefetch cache against the real book (the unit-test binary skips it without one).
 ./build/sim/tests "$ZIP" >/dev/null 2>"$TMP/err" || { cat "$TMP/err"; echo "FAIL: cache test"; exit 1; }
+convert_check() { python3 -c "import sys;d=open(sys.argv[1],'rb').read();print(1 if len(set(d[20:]))>8 else 0)" "$1"; }
 fail() { echo "FAIL: $*"; cat "$TMP/err"; exit 1; }
 
 # Screen 600 wide: left third x<200 = forward (RTL), right third = back, centre = toggle.
@@ -68,16 +69,18 @@ grep -q 'show p004.png' "$TMP/err" || fail "resume last (-r)"
 printf 'key 109\nkey 109\nkey 109\nkey 104\nquit\n' | $BIN -f 3 -s "$TMP/state2" "$ZIP" >"$TMP/out" 2>"$TMP/err"
 [ "$(grep -c '^FRAME.* full' "$TMP/out")" = 2 ] || fail "periodic full refresh"
 
-# Library: lists the book, tap opens it, long-press centre returns, top row exits.
+# Library: a shelf of covers (3 columns at 600 wide). Tapping a cover opens it
+# (natural order: "Vol 2" is first), long-press centre returns, the top row exits.
 mkdir -p "$TMP/lib"
 cp "$ZIP" "$TMP/lib/Vol 2.zip"
 cp "$ZIP" "$TMP/lib/Vol 10.zip"
-printf 'tap 300 64\nlong 300 400\ntap 300 10\n' | $BIN -v -l "$TMP/lib" -s "$TMP/state3" >"$TMP/out" 2>"$TMP/err"
-grep -q ' 2| Vol 2$' "$TMP/out" || fail "library listing (natural order)"
-grep -q ' 4| Vol 10$' "$TMP/out" || fail "library listing (natural order)"
+printf 'tap 100 150\nlong 300 400\ntap 300 10\n' | MANGLE_SIM_DIR="$TMP" $BIN -v -l "$TMP/lib" -s "$TMP/state3" >"$TMP/out" 2>"$TMP/err"
 grep -q 'show p001.png' "$TMP/err" || fail "library open"
-[ "$(grep -c '^TEXT' "$TMP/out")" = 2 ] || fail "library not shown again after closing book"
-grep -q ' 2| Vol 2  \[1/' "$TMP/out" || fail "library progress"
+! grep -q '^TEXT' "$TMP/out" || fail "library should draw a shelf, not text"
+[ "$(grep -c '^FRAME.* full' "$TMP/out")" -ge 2 ] || fail "library not shown again after closing book"
+[ -f "$TMP/state3/Vol 2.zip.pos" ] || fail "natural order: first cover should be Vol 2"
+# Cover of the first book is drawn: the shelf frame is not blank.
+[ "$(convert_check "$TMP/frame_0001.pgm")" = 1 ] || fail "shelf frame is blank"
 
 # Bad input is reported on screen, not a crash.
 echo "not a zip" >"$TMP/lib/bad.zip"

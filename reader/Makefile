@@ -17,7 +17,7 @@ TP        := third_party
 FBINK_DIR := $(TP)/FBInk
 
 CORE := $(SRC)/book.c $(SRC)/nav.c $(SRC)/gesture.c $(SRC)/cache.c $(SRC)/compose.c \
-        $(SRC)/state.c $(SRC)/library.c $(SRC)/touch.c $(SRC)/input_common.c \
+        $(SRC)/state.c $(SRC)/library.c $(SRC)/font.c $(SRC)/touch.c $(SRC)/input_common.c \
         $(TP)/miniz/miniz.c $(TP)/cjson/cJSON.c
 
 CPPFLAGS += -I$(SRC) -I$(TP)/miniz -I$(TP)/cjson -I$(TP)/stb -D_GNU_SOURCE \
