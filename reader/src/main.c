@@ -125,7 +125,7 @@ static void read_book(App* app, const char* path)
 		goto out;
 	}
 
-	Pos   pos = { 0, 0, MODE_PANEL };
+	Pos   pos = nav_start(b);
 	Saved sv;
 	if (state_load(app->state_dir, path, &sv) == 0)
 		pos = sv.pos;
@@ -200,6 +200,7 @@ static void usage(const char* argv0)
 		"  -s DIR   folder for resume state (default: ./state)\n"
 		"  -r       reopen the last book read\n"
 		"  -f N     full (flashing) refresh every N page turns, 0 = never (default 8)\n"
+		"  -O       panel mode: don't show a page whole before its panels\n"
 		"  -v       log every image shown\n",
 		argv0);
 }
@@ -210,7 +211,7 @@ int main(int argc, char** argv)
 	const char* library = NULL;
 	bool        resume  = false;
 	int         c;
-	while ((c = getopt(argc, argv, "l:s:rf:vh")) != -1) {
+	while ((c = getopt(argc, argv, "l:s:rf:Ovh")) != -1) {
 		switch (c) {
 			case 'l':
 				library = optarg;
@@ -223,6 +224,9 @@ int main(int argc, char** argv)
 				break;
 			case 'f':
 				app.flash_every = atoi(optarg);
+				break;
+			case 'O':
+				nav_set_overview(false);
 				break;
 			case 'v':
 				app.verbose = true;

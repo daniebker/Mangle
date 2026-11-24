@@ -17,6 +17,7 @@ fi
 
 MANGLE_LIBRARY=/mnt/us/manga
 FLASH_EVERY=8
+PAGE_OVERVIEW=1
 [ -f "$EXT_DIR/mangle.conf" ] && . "$EXT_DIR/mangle.conf"
 
 STATE=$EXT_DIR/state
@@ -49,10 +50,11 @@ case "${1:-library}" in
 	resume) RESUME=-r ;;
 	*) RESUME= ;;
 esac
+[ "$PAGE_OVERVIEW" = 0 ] && NO_OVERVIEW=-O || NO_OVERVIEW=
 
 # Not exec: the EXIT trap must run after the reader exits (or crashes).
 # Run it in the background so a signal to this script reaches it too.
-"$EXT_DIR/bin/mangle" -l "$MANGLE_LIBRARY" -s "$STATE" -f "$FLASH_EVERY" $RESUME >>"$LOG" 2>&1 &
+"$EXT_DIR/bin/mangle" -l "$MANGLE_LIBRARY" -s "$STATE" -f "$FLASH_EVERY" $NO_OVERVIEW $RESUME >>"$LOG" 2>&1 &
 READER=$!
 trap 'kill -TERM "$READER" 2>/dev/null; wait "$READER"; exit 1' INT TERM HUP QUIT
 wait "$READER"

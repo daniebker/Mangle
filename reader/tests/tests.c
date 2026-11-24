@@ -69,19 +69,58 @@ static void test_manifest(void)
 static void test_nav(void)
 {
 	Book* b = fake_book();
-	Pos   p = { 0, 0, MODE_PANEL };
-	const char* seq[] = { "p001.png", "p002_1.png", "p002_2.png", "p003_1.png", "p004.png" };
+	Pos   p;
+
+	// Panel mode with the page overview (default): each paneled page is
+	// shown whole before its panels, in both directions.
+	CHECK(nav_overview());
+	const char* seq[] = { "p001.png", "p002.png", "p002_1.png", "p002_2.png",
+			      "p003.png", "p003_1.png", "p004.png" };
+	int         n     = (int) (sizeof(seq) / sizeof(*seq));
+	p                 = nav_start(b);
 	CHECK(strcmp(IMG(p), seq[0]) == 0);
-	for (int i = 1; i < 5; i++) {
+	for (int i = 1; i < n; i++) {
 		CHECK(nav_next(b, &p));
 		CHECK(strcmp(IMG(p), seq[i]) == 0);
 	}
 	CHECK(!nav_next(b, &p));
-	for (int i = 3; i >= 0; i--) {
+	for (int i = n - 2; i >= 0; i--) {
 		CHECK(nav_prev(b, &p));
 		CHECK(strcmp(IMG(p), seq[i]) == 0);
 	}
 	CHECK(!nav_prev(b, &p));
+	// A book whose first page has panels starts at that page's overview.
+	b->pages[0].npanels = 1;
+	b->pages[0].panels  = b->pages[2].panels;
+	p                   = nav_start(b);
+	CHECK(p.panel == PANEL_OVERVIEW && strcmp(IMG(p), "p001.png") == 0);
+	b->pages[0].npanels = 0;
+	b->pages[0].panels  = NULL;
+	// A saved overview position survives clamping.
+	p = (Pos){ 1, PANEL_OVERVIEW, MODE_PANEL };
+	nav_clamp(b, &p);
+	CHECK(p.panel == PANEL_OVERVIEW && strcmp(IMG(p), "p002.png") == 0);
+
+	// Without the overview: straight from panel to panel across pages.
+	nav_set_overview(false);
+	const char* seq2[] = { "p001.png", "p002_1.png", "p002_2.png", "p003_1.png", "p004.png" };
+	n                  = (int) (sizeof(seq2) / sizeof(*seq2));
+	p                  = nav_start(b);
+	CHECK(strcmp(IMG(p), seq2[0]) == 0);
+	for (int i = 1; i < n; i++) {
+		CHECK(nav_next(b, &p));
+		CHECK(strcmp(IMG(p), seq2[i]) == 0);
+	}
+	CHECK(!nav_next(b, &p));
+	for (int i = n - 2; i >= 0; i--) {
+		CHECK(nav_prev(b, &p));
+		CHECK(strcmp(IMG(p), seq2[i]) == 0);
+	}
+	CHECK(!nav_prev(b, &p));
+	p = (Pos){ 1, PANEL_OVERVIEW, MODE_PANEL };    // saved with the overview on
+	nav_clamp(b, &p);
+	CHECK(p.panel == 0);
+	nav_set_overview(true);
 
 	// Page mode moves whole pages.
 	p = (Pos){ 1, 1, MODE_PANEL };

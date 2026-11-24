@@ -132,7 +132,10 @@ empty `panels` list means the page is always shown whole.
 | Page-turn buttons | forward / back | same |
 
 - **Panel mode** (the default) moves one panel at a time and carries on to the next or previous
-  page. Pages without panels are shown whole.
+  page. Before the first panel of a page, the whole page is shown once as an overview, so you
+  see the layout before zooming in: last panel → next page whole → its first panel. Going back
+  reverses this. Pages without panels are shown whole. To go straight from panel to panel, set
+  `PAGE_OVERVIEW=0` in `mangle.conf` (or run the reader with `-O`).
 - **Page mode** moves a whole page at a time.
 - Switching modes keeps you on the same page.
 - Only centre taps wait 300 ms for a possible second tap. Side taps turn the page immediately.
@@ -206,8 +209,8 @@ marked as latest. It contains:
 3. Copy your converted ZIPs into `/mnt/us/manga/`.
 4. Open KUAL and choose **Mangle → Library** or **Mangle → Resume last book**.
 
-Settings are in `extensions/mangle/mangle.conf`: library folder, full-refresh interval,
-waveform, and touch fixes. If something goes wrong, the log is in `extensions/mangle/mangle.log`.
+Settings are in `extensions/mangle/mangle.conf`: library folder, full-refresh interval, page
+overview, waveform, and touch fixes. If something goes wrong, the log is in `extensions/mangle/mangle.log`.
 
 What the launcher does:
 
