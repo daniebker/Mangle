@@ -115,11 +115,8 @@ case "$CMD" in
 		say "Preprocessor tests"
 		(cd "$ROOT/preprocessor" && "$PYTHON" -m pytest -q tests)
 		say "Reader tests"
-		# sim_test.sh calls python3; point it at the chosen interpreter.
-		bindir=$(mktemp -d)
-		trap 'rm -rf "$bindir"' EXIT
-		ln -s "$(command -v "$PYTHON")" "$bindir/python3"
-		PATH=$bindir:$PATH make -C "$READER" -j"$JOBS" test
+		# sim_test.sh generates its sample book with $PYTHON.
+		PYTHON=$PYTHON make -C "$READER" -j"$JOBS" test
 		say "All tests passed"
 		;;
 	toolchain)

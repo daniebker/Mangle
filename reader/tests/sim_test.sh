@@ -3,6 +3,7 @@
 # Needs a book ZIP: $MANGLE_TEST_ZIP, or one is generated with the
 # preprocessor (needs its Python requirements).
 set -eu
+PY=${PYTHON:-python3}   # interpreter with the preprocessor requirements
 cd "$(dirname "$0")/.."
 BIN=./build/sim/mangle
 TMP=$(mktemp -d)
@@ -10,8 +11,12 @@ trap 'rm -rf "$TMP"' EXIT
 
 ZIP=${MANGLE_TEST_ZIP:-}
 if [ -z "$ZIP" ]; then
-	python3 ../preprocessor/tests/sample.py "$TMP/in.cbz"
-	(cd ../preprocessor && python3 prep.py "$TMP/in.cbz" -o "$TMP/book.zip" --screen 600x800 -j 2) 2>/dev/null
+	"$PY" ../preprocessor/tests/sample.py "$TMP/in.cbz"
+	(cd ../preprocessor && "$PY" prep.py "$TMP/in.cbz" -o "$TMP/book.zip" --screen 600x800 -j 2) 2>"$TMP/prep.log" || {
+		cat "$TMP/prep.log"
+		echo "FAIL: prep.py could not build the test book (is \$PYTHON set to an interpreter with preprocessor/requirements.txt?)"
+		exit 1
+	}
 	ZIP=$TMP/book.zip
 fi
 export MANGLE_SIM_SCREEN=600x800
