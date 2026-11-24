@@ -120,7 +120,7 @@ static int ui_scale(const Screen* s)
 }
 
 // Settings screen. Returns true if the program should quit.
-static bool settings_screen(Reader* r)
+static bool settings_screen(Reader* r, Pos* pos)
 {
 	App*          app   = r->app;
 	const Screen* s     = &app->scr;
@@ -138,8 +138,9 @@ static bool settings_screen(Reader* r)
 			 app->settings.sleep ? "ON" : "OFF");
 		font_draw(f, s->width, s->height, pad, row_h + scale * 8, scale, line, 0);
 		fill_rows(f, s, 2 * row_h - 1, 2 * row_h, 128);
-		font_draw(f, s->width, s->height, pad, 2 * row_h + scale * 8, scale,
-			  "Shows the cover and suspends.", 96);
+		snprintf(line, sizeof(line), "Panel mode page preview: %s", app->settings.overview ? "ON" : "OFF");
+		font_draw(f, s->width, s->height, pad, 2 * row_h + scale * 8, scale, line, 0);
+		fill_rows(f, s, 3 * row_h - 1, 3 * row_h, 128);
 		display_frame(f, true);
 
 		for (;;) {
@@ -167,13 +168,21 @@ static bool settings_screen(Reader* r)
 					fprintf(stderr, "mangle: cannot save settings: %s\n", strerror(errno));
 				break;
 			}
+			if (ev.y < 3 * row_h) {
+				app->settings.overview = !app->settings.overview;
+				nav_set_overview(app->settings.overview);
+				nav_clamp(r->book, pos);    // the overview may no longer exist here
+				if (settings_save(app->state_dir, &app->settings) != 0)
+					fprintf(stderr, "mangle: cannot save settings: %s\n", strerror(errno));
+				break;
+			}
 		}
 	}
 }
 
 // Menu bar across the top of the current page. Returns true if the reader
 // should go back to the library (or quit, when there is no library).
-static bool menu(Reader* r, Pos p)
+static bool menu(Reader* r, Pos* pos)
 {
 	const Screen* s     = &r->app->scr;
 	int           scale = ui_scale(s);
@@ -204,7 +213,7 @@ static bool menu(Reader* r, Pos p)
 		}
 		if (ev.kind == IN_TAP) {
 			if (ev.y < bar_h && ev.x >= set_x - 2 * cw && ev.x < set_end) {
-				leave = settings_screen(r);
+				leave = settings_screen(r, pos);
 				break;
 			}
 			leave = ev.y < bar_h && ev.x < set_x - 2 * cw;
@@ -217,7 +226,7 @@ static bool menu(Reader* r, Pos p)
 		}
 	}
 	if (!leave)
-		show(r, p, true);    // repaint the page over the bar
+		show(r, *pos, true);    // repaint the page over the bar
 	return leave;
 }
 
@@ -361,7 +370,7 @@ static void read_book(App* app, const char* path)
 					done = true;
 					break;
 				case ACT_MENU:
-					done = menu(&r, pos);
+					done = menu(&r, &pos);
 					break;
 				case ACT_NONE:
 					break;
@@ -388,14 +397,15 @@ static void usage(const char* argv0)
 		"  -r       reopen the last book read\n"
 		"  -t SEC   sleep screen (book cover) after SEC idle seconds (default 120)\n"
 		"  -f N     full (flashing) refresh every N page turns, 0 = never (default 8)\n"
-		"  -O       panel mode: don't show a page whole before its panels\n"
+		"  -O       panel mode: no page preview unless the Settings menu turns it on\n"
 		"  -v       log every image shown\n",
 		argv0);
 }
 
 int main(int argc, char** argv)
 {
-	App         app     = { .state_dir = "state", .flash_every = 8, .idle_ms = 120000 };
+	bool        overview = true;    // -O turns the default off; the saved setting wins
+	App         app     = { .state_dir = "state", .flash_every = 8, .idle_ms = 120000, .settings = { .sleep = true } };
 	const char* library = NULL;
 	bool        resume  = false;
 	int         c;
@@ -414,7 +424,7 @@ int main(int argc, char** argv)
 				app.flash_every = atoi(optarg);
 				break;
 			case 'O':
-				nav_set_overview(false);
+				overview = false;
 				break;
 			case 't':
 				app.idle_ms = atoi(optarg) * 1000;
@@ -436,7 +446,9 @@ int main(int argc, char** argv)
 
 	setup_signals();
 	mkdir(app.state_dir, 0755);
+	app.settings.overview = overview;
 	settings_load(app.state_dir, &app.settings);
+	nav_set_overview(app.settings.overview);
 	if (display_open(&app.scr) != 0)
 		return 1;
 	if (input_open(app.scr.width, app.scr.height) != 0) {

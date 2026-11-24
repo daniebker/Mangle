@@ -5,7 +5,6 @@
 
 void settings_load(const char* dir, Settings* s)
 {
-	s->sleep = true;
 	char path[4096];
 	snprintf(path, sizeof(path), "%s/settings", dir);
 	FILE* f = fopen(path, "r");
@@ -16,6 +15,8 @@ void settings_load(const char* dir, Settings* s)
 		int v;
 		if (sscanf(line, "sleep=%d", &v) == 1)
 			s->sleep = v != 0;
+		if (sscanf(line, "overview=%d", &v) == 1)
+			s->overview = v != 0;
 	}
 	fclose(f);
 }
@@ -28,7 +29,7 @@ int settings_save(const char* dir, const Settings* s)
 	FILE* f = fopen(tmp, "w");
 	if (!f)
 		return -1;
-	fprintf(f, "sleep=%d\n", s->sleep ? 1 : 0);
+	fprintf(f, "sleep=%d\noverview=%d\n", s->sleep ? 1 : 0, s->overview ? 1 : 0);
 	if (fclose(f) != 0)
 		return -1;
 	return rename(tmp, path);

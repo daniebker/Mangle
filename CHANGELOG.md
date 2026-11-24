@@ -1,6 +1,9 @@
 # Changelog
 
-## Unreleased
+## v0.6.0
+
+### Added
+- Settings: "Panel mode page preview" turns off the whole-page overview shown before a page's panels. Saved with the other settings; `-O` only sets the default.
 
 ### Changed
 - Books are about 4x smaller: panels are stored as rectangles of the page image (manifest version 2) instead of separate upscaled images, and the reader crops and scales them. Version 1 books still open. Panels are a little softer, since they are scaled from the screen-size page.

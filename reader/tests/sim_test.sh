@@ -97,4 +97,12 @@ grep -q '^SUSPEND' "$TMP/out" || fail "device not suspended"
 printf 'tap 300 5\ntap 200 5\ntap 300 80\ntap 10 20\nsleep 2500\nquit\n' | $BIN -t 1 -v -s "$TMP/state_st" "$ZIP" >/dev/null 2>"$TMP/err"
 grep -q 'sleep=0' "$TMP/state_st/settings" || fail "settings not saved"
 grep -q 'mangle: sleep' "$TMP/err" && fail "slept with sleep turned off"
+# Settings: turning the page preview off persists, takes effect at once, and is saved.
+printf 'tap 300 5\ntap 200 5\ntap 300 150\ntap 10 20\ntap 10 400\nquit\n' | $BIN -v -s "$TMP/state_pv" "$ZIP" >/dev/null 2>"$TMP/err"
+grep -q 'overview=0' "$TMP/state_pv/settings" || fail "preview setting not saved"
+grep -q 'show p002.png page=1 panel=0 mode=panel' "$TMP/err" || fail "preview should be skipped once turned off"
+# Next launch: saved setting still applies.
+mkdir -p "$TMP/state_pv4"; cp "$TMP/state_pv/settings" "$TMP/state_pv4/settings"
+printf 'tap 10 400\nquit\n' | $BIN -v -s "$TMP/state_pv4" "$ZIP" >/dev/null 2>"$TMP/err"
+grep -q 'panel=-1' "$TMP/err" && fail "saved preview-off setting ignored"
 echo "sim tests passed"
