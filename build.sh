@@ -1,0 +1,139 @@
+#!/bin/sh
+# Build Mangle.
+#
+#   ./build.sh [kindlehf]        Kindle build for firmware 5.16.3+ -> reader/dist/mangle-kual-kindlehf.zip
+#   ./build.sh kindlepw2         Kindle build for older 5.x firmware (soft-float)
+#   ./build.sh custom --cross P  Kindle build with another toolchain (P = triplet, e.g. arm-linux-gnueabihf)
+#   ./build.sh sim               desktop simulator: reader/build/sim/mangle
+#   ./build.sh test              preprocessor + reader tests
+#   ./build.sh toolchain [T]     build koxtoolchain target T (default kindlehf) into ~/x-tools (slow)
+#   ./build.sh clean             remove build output
+#
+# Options:
+#   --cross PREFIX   toolchain triplet (overrides the target's default)
+#   -j N             parallel make jobs (default: CPU count)
+#
+# Environment: PYTHON (default python3), FBINK_VERSION (default v1.25.0),
+# KOXTOOLCHAIN_DIR (where to clone koxtoolchain, default ~/koxtoolchain).
+set -eu
+
+ROOT=$(cd "$(dirname "$0")" && pwd)
+READER=$ROOT/reader
+PYTHON=${PYTHON:-python3}
+JOBS=$(getconf _NPROCESSORS_ONLN 2>/dev/null || echo 2)
+
+say() { printf '\033[1m==> %s\033[0m\n' "$*"; }
+die() { printf 'error: %s\n' "$*" >&2; exit 1; }
+need() { command -v "$1" >/dev/null 2>&1 || die "$1 not found${2:+ ($2)}"; }
+
+CMD=kindlehf
+CROSS=
+ARG=
+while [ $# -gt 0 ]; do
+	case "$1" in
+		--cross) [ $# -ge 2 ] || die "--cross needs a value"; CROSS=$2; shift 2 ;;
+		-j) [ $# -ge 2 ] || die "-j needs a value"; JOBS=$2; shift 2 ;;
+		-j*) JOBS=${1#-j}; shift ;;
+		-h|--help) sed -n '2,19p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
+		-*) die "unknown option $1" ;;
+		*)
+			if [ "$CMD" = toolchain ] && [ -z "$ARG" ] && [ "${SEEN_CMD:-}" = 1 ]; then ARG=$1
+			else CMD=$1; SEEN_CMD=1; fi
+			shift ;;
+	esac
+done
+
+default_cross() {
+	case "$1" in
+		kindlehf) echo arm-kindlehf-linux-gnueabihf ;;
+		kindlepw2) echo arm-kindlepw2-linux-gnueabi ;;
+		kindle) echo arm-kindle-linux-gnueabi ;;
+		*) echo "" ;;
+	esac
+}
+
+# Find a cross compiler: on PATH, or in koxtoolchain's default ~/x-tools.
+find_cross() {
+	triplet=$1
+	command -v "$triplet-gcc" >/dev/null 2>&1 && return 0
+	if [ -x "$HOME/x-tools/$triplet/bin/$triplet-gcc" ]; then
+		PATH=$HOME/x-tools/$triplet/bin:$PATH
+		export PATH
+		return 0
+	fi
+	return 1
+}
+
+kindle_build() {
+	target=$1
+	triplet=${CROSS:-$(default_cross "$target")}
+	[ -n "$triplet" ] || die "no toolchain for '$target': pass --cross PREFIX"
+	find_cross "$triplet" || die "$triplet-gcc not found on PATH or in ~/x-tools.
+Build the toolchain with: ./build.sh toolchain $target
+(or install koxtoolchain and add x-tools/$triplet/bin to PATH)"
+	need make
+	need git "to fetch FBInk"
+	need zip "to package the KUAL extension"
+
+	if [ ! -f "$READER/third_party/FBInk/fbink.h" ]; then
+		say "Fetching FBInk"
+		"$READER/fetch_fbink.sh"
+	fi
+
+	say "Building reader for $target ($triplet)"
+	make -C "$READER" -j"$JOBS" "build/$target/mangle" TARGET="$target" CROSS="$triplet"
+	say "Packaging KUAL extension"
+	make -C "$READER" package TARGET="$target"
+	say "Done: reader/dist/mangle-kual-$target.zip"
+	echo "Unzip it into /mnt/us/extensions/ on the Kindle and copy books to /mnt/us/manga/."
+}
+
+case "$CMD" in
+	kindlehf|kindlepw2|kindle)
+		kindle_build "$CMD"
+		;;
+	custom)
+		[ -n "$CROSS" ] || die "custom needs --cross PREFIX"
+		kindle_build custom
+		;;
+	sim)
+		need make
+		say "Building desktop simulator"
+		make -C "$READER" -j"$JOBS" sim
+		say "Done: reader/build/sim/mangle"
+		;;
+	test)
+		need make
+		need "$PYTHON"
+		"$PYTHON" -c 'import PIL, numpy, cv2, pytest' 2>/dev/null ||
+			die "Python dependencies missing: $PYTHON -m pip install -r preprocessor/requirements.txt pytest"
+		say "Preprocessor tests"
+		(cd "$ROOT/preprocessor" && "$PYTHON" -m pytest -q tests)
+		say "Reader tests"
+		# sim_test.sh calls python3; point it at the chosen interpreter.
+		bindir=$(mktemp -d)
+		trap 'rm -rf "$bindir"' EXIT
+		ln -s "$(command -v "$PYTHON")" "$bindir/python3"
+		PATH=$bindir:$PATH make -C "$READER" -j"$JOBS" test
+		say "All tests passed"
+		;;
+	toolchain)
+		target=${ARG:-kindlehf}
+		need git
+		dir=${KOXTOOLCHAIN_DIR:-$HOME/koxtoolchain}
+		if [ ! -d "$dir/.git" ]; then
+			say "Cloning koxtoolchain into $dir"
+			git clone --depth 1 https://github.com/koreader/koxtoolchain.git "$dir"
+		fi
+		say "Building the $target toolchain (this takes a long time; output goes to ~/x-tools)"
+		echo "koxtoolchain needs crosstool-ng's build dependencies; see $dir/README.md if it fails."
+		(cd "$dir" && ./gen-tc.sh "$target")
+		say "Done. Now run: ./build.sh $target"
+		;;
+	clean)
+		make -C "$READER" clean
+		;;
+	*)
+		die "unknown command '$CMD' (try --help)"
+		;;
+esac

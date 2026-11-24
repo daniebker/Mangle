@@ -136,12 +136,30 @@ tap the top row to exit.
 
 ### Building
 
+From the repository root:
+
+```sh
+./build.sh toolchain kindlehf   # one-off: build koxtoolchain into ~/x-tools (takes a long time)
+./build.sh kindlehf             # firmware 5.16.3 and newer -> reader/dist/mangle-kual-kindlehf.zip
+./build.sh kindlepw2            # older 5.x firmware (soft-float)
+./build.sh sim                  # desktop simulator
+./build.sh test                 # preprocessor + reader tests
+./build.sh --help
+```
+
+`build.sh` finds the cross-compiler on `PATH` or in `~/x-tools/<triplet>/bin`, fetches FBInk
+if it's missing, builds the reader and packages the KUAL extension. To use another toolchain,
+run `./build.sh custom --cross <triplet>`. Building the toolchain needs crosstool-ng's
+dependencies; on Debian/Ubuntu:
+`sudo apt-get install build-essential autoconf automake bison flex gawk libtool libtool-bin libncurses-dev curl file git gperf help2man texinfo unzip wget`.
+
+The steps it runs, if you'd rather do them by hand:
+
 ```sh
 cd reader
-./fetch_fbink.sh          # FBInk v1.25.0 (GPLv3, not vendored)
-make kindlehf             # firmware 5.16.3 and newer (hard-float)
-make kindlepw2            # older 5.x firmware (soft-float)
-make package              # -> dist/mangle-kual.zip
+./fetch_fbink.sh                    # FBInk v1.25.0 (GPLv3, not vendored)
+make kindlehf                       # or kindlepw2
+make package TARGET=kindlehf        # -> dist/mangle-kual-kindlehf.zip
 ```
 
 Cross-compiling needs [koxtoolchain](https://github.com/koreader/koxtoolchain) on `PATH`, with
@@ -156,7 +174,7 @@ i2c-tools dependency is skipped.
 ### Installing on the Kindle
 
 1. Jailbreak the Kindle and install KUAL.
-2. Unzip `dist/mangle-kual.zip` into `/mnt/us/extensions/` (the `extensions` folder when the
+2. Unzip `reader/dist/mangle-kual-<target>.zip` into `/mnt/us/extensions/` (the `extensions` folder when the
    Kindle is connected over USB). You should end up with `extensions/mangle/`.
 3. Copy your converted ZIPs into `/mnt/us/manga/`.
 4. Open KUAL and choose **Mangle → Library** or **Mangle → Resume last book**.

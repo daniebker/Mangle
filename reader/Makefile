@@ -7,6 +7,8 @@
 #   make kindle          same as kindlehf
 #   make package         KUAL extension folder + zip in dist/ (after a Kindle build)
 #
+# ../build.sh wraps all of this (finds the toolchain, fetches FBInk, packages).
+#
 # Kindle builds need NiLuJe's koxtoolchain on PATH (x-tools/<target>/bin)
 # and FBInk in third_party/FBInk (run ./fetch_fbink.sh once).
 
@@ -78,14 +80,18 @@ build/$(TARGET)/mangle: $(CORE) $(SRC)/main.c $(SRC)/display_fbink.c $(SRC)/inpu
 endif
 
 # ---- packaging ---------------------------------------------------------------
-# Copies the newest Kindle binary into the KUAL extension and zips it.
+# Copies a Kindle binary into the KUAL extension and zips it:
+#   make package TARGET=kindlehf   -> dist/mangle-kual-kindlehf.zip
+# Without TARGET, uses the newest of the kindlehf/kindlepw2 builds.
 package:
-	@bin=$$(ls -t build/kindlehf/mangle build/kindlepw2/mangle 2>/dev/null | head -1); \
-	test -n "$$bin" || { echo "build a Kindle target first"; exit 1; }; \
+	@if [ -n "$(TARGET)" ]; then bin=build/$(TARGET)/mangle; \
+	else bin=$$(ls -t build/kindlehf/mangle build/kindlepw2/mangle 2>/dev/null | head -1); fi; \
+	test -f "$$bin" || { echo "build a Kindle target first"; exit 1; }; \
+	name=mangle-kual-$$(basename $$(dirname $$bin)); \
 	rm -rf dist/mangle && mkdir -p dist && cp -r ../kual/mangle dist/mangle && \
 	cp "$$bin" dist/mangle/bin/mangle && chmod +x dist/mangle/bin/* && \
-	(cd dist && rm -f mangle-kual.zip && zip -qr mangle-kual.zip mangle) && \
-	echo "dist/mangle-kual.zip (binary: $$bin)"
+	(cd dist && rm -f $$name.zip && zip -qr $$name.zip mangle) && \
+	echo "dist/$$name.zip (binary: $$bin)"
 
 clean:
 	rm -rf build dist
