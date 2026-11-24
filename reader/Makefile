@@ -24,7 +24,8 @@ CPPFLAGS += -I$(SRC) -I$(TP)/miniz -I$(TP)/cjson -I$(TP)/stb -D_GNU_SOURCE \
             -DMINIZ_NO_ZLIB_COMPATIBLE_NAMES -DMINIZ_NO_ARCHIVE_WRITING_APIS
 CFLAGS   ?= -O2 -g
 CFLAGS   += -std=gnu11 -Wall -Wextra -Wno-unused-parameter
-LDLIBS   += -lpthread -lm
+# -lrt: clock_gettime lives there on the older glibc of the kindlepw2 target.
+LDLIBS   += -lpthread -lm -lrt
 
 
 .PHONY: all sim test kindle kindlehf kindlepw2 package clean

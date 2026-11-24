@@ -6,15 +6,18 @@
 #   ./build.sh custom --cross P  Kindle build with another toolchain (P = triplet, e.g. arm-linux-gnueabihf)
 #   ./build.sh sim               desktop simulator: reader/build/sim/mangle
 #   ./build.sh test              preprocessor + reader tests
-#   ./build.sh toolchain [T]     build koxtoolchain target T (default kindlehf) into ~/x-tools (slow)
+#   ./build.sh toolchain [T]     install koxtoolchain target T (default kindlehf) into ~/x-tools
 #   ./build.sh clean             remove build output
 #
 # Options:
 #   --cross PREFIX   toolchain triplet (overrides the target's default)
+#   --from-source    toolchain: build it with crosstool-ng (about an hour)
+#                    instead of downloading koxtoolchain's prebuilt release
 #   -j N             parallel make jobs (default: CPU count)
 #
 # Environment: PYTHON (default python3), FBINK_VERSION (default v1.25.0),
-# KOXTOOLCHAIN_DIR (where to clone koxtoolchain, default ~/koxtoolchain).
+# KOXTOOLCHAIN_VERSION (prebuilt release, default 2026.08),
+# KOXTOOLCHAIN_DIR (where to clone koxtoolchain for --from-source, default ~/koxtoolchain).
 set -eu
 
 ROOT=$(cd "$(dirname "$0")" && pwd)
@@ -28,13 +31,15 @@ need() { command -v "$1" >/dev/null 2>&1 || die "$1 not found${2:+ ($2)}"; }
 
 CMD=kindlehf
 CROSS=
+FROM_SOURCE=
 ARG=
 while [ $# -gt 0 ]; do
 	case "$1" in
 		--cross) [ $# -ge 2 ] || die "--cross needs a value"; CROSS=$2; shift 2 ;;
 		-j) [ $# -ge 2 ] || die "-j needs a value"; JOBS=$2; shift 2 ;;
 		-j*) JOBS=${1#-j}; shift ;;
-		-h|--help) sed -n '2,19p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
+		--from-source) FROM_SOURCE=1; shift ;;
+		-h|--help) sed -n '2,/^set -eu/{/^#/p}' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
 		-*) die "unknown option $1" ;;
 		*)
 			if [ "$CMD" = toolchain ] && [ -z "$ARG" ] && [ "${SEEN_CMD:-}" = 1 ]; then ARG=$1
@@ -119,6 +124,20 @@ case "$CMD" in
 		;;
 	toolchain)
 		target=${ARG:-kindlehf}
+		if [ -z "$FROM_SOURCE" ]; then
+			version=${KOXTOOLCHAIN_VERSION:-2026.08}
+			need curl
+			need zstd "to unpack the toolchain"
+			url=https://github.com/koreader/koxtoolchain/releases/download/$version/$target.tar.zst
+			tmp=$(mktemp)
+			trap 'rm -f "$tmp"' EXIT
+			say "Downloading koxtoolchain $version ($target)"
+			curl -fL --retry 3 -o "$tmp" "$url" || die "download failed: $url (try --from-source)"
+			# The archive holds x-tools/<triplet>/...
+			zstd -dc "$tmp" | tar -C "$HOME" -xf -
+			say "Installed into ~/x-tools. Now run: ./build.sh $target"
+			exit 0
+		fi
 		need git
 		dir=${KOXTOOLCHAIN_DIR:-$HOME/koxtoolchain}
 		if [ ! -d "$dir/.git" ]; then

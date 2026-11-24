@@ -139,7 +139,7 @@ tap the top row to exit.
 From the repository root:
 
 ```sh
-./build.sh toolchain kindlehf   # one-off: build koxtoolchain into ~/x-tools (takes a long time)
+./build.sh toolchain kindlehf   # one-off: download koxtoolchain into ~/x-tools (~100 MB)
 ./build.sh kindlehf             # firmware 5.16.3 and newer -> reader/dist/mangle-kual-kindlehf.zip
 ./build.sh kindlepw2            # older 5.x firmware (soft-float)
 ./build.sh sim                  # desktop simulator
@@ -149,8 +149,12 @@ From the repository root:
 
 `build.sh` finds the cross-compiler on `PATH` or in `~/x-tools/<triplet>/bin`, fetches FBInk
 if it's missing, builds the reader and packages the KUAL extension. To use another toolchain,
-run `./build.sh custom --cross <triplet>`. Building the toolchain needs crosstool-ng's
-dependencies; on Debian/Ubuntu:
+run `./build.sh custom --cross <triplet>`.
+
+`./build.sh toolchain` downloads koxtoolchain's prebuilt release (`KOXTOOLCHAIN_VERSION`,
+default `2026.08`; needs `curl` and `zstd`). To build the toolchain yourself instead, add
+`--from-source`. That takes about an hour and needs crosstool-ng's dependencies; on
+Debian/Ubuntu:
 `sudo apt-get install build-essential autoconf automake bison flex gawk libtool libtool-bin libncurses-dev curl file git gperf help2man texinfo unzip wget`.
 
 The steps it runs, if you'd rather do them by hand:
@@ -171,10 +175,22 @@ miniz, cJSON and stb_image are included in `reader/third_party/`. FBInk is built
 `MINIMAL BITMAP IMAGE` static library (built-in font plus raw image blitting). Its Kobo-only
 i2c-tools dependency is skipped.
 
+### Releases
+
+`.github/workflows/build.yml` runs the tests and both Kindle builds on every push and pull
+request. Every push to `main` also publishes a GitHub release named `build-<run number>`,
+marked as latest. It contains:
+
+- `mangle-kual-kindlehf.zip`: the KUAL extension for firmware 5.16.3 and newer
+- `mangle-kual-kindlepw2.zip`: the KUAL extension for older 5.x firmware
+- `mangle-preprocessor.zip`: `prep.py`, `preview.py` and their requirements
+- `SHA256SUMS`
+
 ### Installing on the Kindle
 
 1. Jailbreak the Kindle and install KUAL.
-2. Unzip `reader/dist/mangle-kual-<target>.zip` into `/mnt/us/extensions/` (the `extensions` folder when the
+2. Download `mangle-kual-<target>.zip` from the latest release, or build it yourself
+   (`reader/dist/`). Unzip it into `/mnt/us/extensions/` (the `extensions` folder when the
    Kindle is connected over USB). You should end up with `extensions/mangle/`.
 3. Copy your converted ZIPs into `/mnt/us/manga/`.
 4. Open KUAL and choose **Mangle → Library** or **Mangle → Resume last book**.
@@ -213,8 +229,8 @@ Preprocessor tests: `cd preprocessor && python -m pytest tests`.
 ## Status and open questions
 
 - **Not yet run on a real Kindle.** Everything above was tested on the desktop with the
-  simulator backend. The FBInk backend compiles and links for x86-64 and for 32-bit ARM
-  hard-float (generic Ubuntu toolchain), but not yet with koxtoolchain. Expect the touch input
+  simulator backend. Both Kindle targets build with koxtoolchain 2026.08 (`kindlehf` needs
+  glibc 2.17, `kindlepw2` glibc 2.4), but the binaries haven't been run. Expect the touch input
   to need tuning on the device. Some models report mirrored or swapped coordinates; set
   `MANGLE_TOUCH=swap,mirror_x,mirror_y` in `mangle.conf` as needed.
 - **Target model and firmware** are still open. They decide `--screen`, `kindlehf` vs
