@@ -133,7 +133,9 @@ static void lcd_init(void)
 		if (st77922_init[i].delay_ms)
 			delay(st77922_init[i].delay_ms);
 	}
-	uint8_t madctl = 0;    // portrait; other rotations are done by fb.c
+	// Portrait, or turned 180 degrees (rows and columns mirrored) with
+	// PANEL_FLIP. 90 and 270 degrees are done by fb.c.
+	uint8_t madctl = PANEL_FLIP ? 0xC0 : 0x00;
 	lcd_reg(0x36, &madctl, 1);
 	panel_ok = true;
 }
@@ -197,6 +199,8 @@ int board_touch(TPoint* out)
 					continue;
 				int x       = (p[0] & 0x3F) << 8 | p[1];
 				int y       = (p[2] & 0x3F) << 8 | p[3];
+				if (PANEL_FLIP)    // the touch panel doesn't turn with the picture
+					x = NATIVE_W - 1 - x, y = NATIVE_H - 1 - y;
 				tp_pts[n++] = TPoint{ clampi(x, 0, NATIVE_W - 1), clampi(y, 0, NATIVE_H - 1) };
 			}
 		}

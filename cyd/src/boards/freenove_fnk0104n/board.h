@@ -34,6 +34,13 @@
 #define NATIVE_W 320
 #define NATIVE_H 480
 
+// Which way up the panel counts as portrait: 1 = turned 180 degrees from the
+// panel's own orientation (the right way up when held as the board is used),
+// 0 = the panel's own. The Rotation setting turns from here.
+#ifndef PANEL_FLIP
+#define PANEL_FLIP 1
+#endif
+
 #define TAP_PX 14
 // 8 MB of PSRAM: decode the next and previous pages ahead, as on the Kindle.
 #define BOARD_PREFETCH 1
