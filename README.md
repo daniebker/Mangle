@@ -228,9 +228,10 @@ i2c-tools dependency is skipped.
 
 ### Releases
 
-`.github/workflows/build.yml` runs the tests and both Kindle builds on every push and pull
-request. Every push to `main` also publishes a GitHub release named `build-<run number>`,
-marked as latest. It contains:
+`.github/workflows/build.yml` runs the tests and both Kindle builds on every push to `main` and
+on pull requests. `.github/workflows/firmware.yml` builds the CYD firmware on every branch push and
+pull request that touches it. Pushing a version tag (`git tag v0.9.0 && git push origin v0.9.0`)
+makes both workflows publish to a GitHub release for that tag, marked as latest. It contains:
 
 - `mangle-kual-kindlehf.zip`: the KUAL extension for firmware 5.16.3 and newer
 - `mangle-kual-kindlepw2.zip`: the KUAL extension for older 5.x firmware
