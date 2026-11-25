@@ -1,0 +1,128 @@
+name: CYD firmware
+
+# Builds the Cheap Yellow Display firmware (cyd/) on every branch push and pull
+# request that touches it, and on every version tag (v*), where the images are
+# attached to the GitHub release. build.yml publishes the Kindle files to the
+# same release; whichever workflow finishes first creates it.
+
+on:
+  push:
+    branches: ['**']
+    tags: ['v*']
+    # Tag pushes ignore these filters, so every release gets firmware.
+    paths:
+      - 'cyd/**'
+      - 'reader/src/nav.*'
+      - 'reader/src/zoom.*'
+      - 'reader/src/gesture.*'
+      - 'reader/src/font.*'
+      - 'reader/src/book.h'
+      - 'reader/src/input.h'
+      - 'reader/third_party/miniz/**'
+      - 'reader/third_party/stb/**'
+      - 'preprocessor/**'
+      - '.github/workflows/firmware.yml'
+  pull_request:
+    paths:
+      - 'cyd/**'
+      - 'reader/src/**'
+      - 'reader/third_party/**'
+      - 'preprocessor/**'
+      - '.github/workflows/firmware.yml'
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  # Don't cancel half-published releases on tags; do cancel stale branch runs.
+  cancel-in-progress: ${{ !startsWith(github.ref, 'refs/tags/') }}
+
+permissions:
+  contents: read
+
+jobs:
+  # The portable firmware code on the desktop: unit tests and the simulator.
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Install Python dependencies
+        run: |
+          python3 -m venv ~/venv
+          ~/venv/bin/pip install -r preprocessor/requirements.txt
+
+      - name: Desktop tests
+        run: PYTHON=~/venv/bin/python make -C cyd test
+
+  build:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        env: [cyd35r, cyd35c]
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.12'
+
+      - name: Cache PlatformIO
+        uses: actions/cache@v6
+        with:
+          path: ~/.platformio
+          key: platformio-${{ runner.os }}-${{ hashFiles('cyd/platformio.ini') }}
+
+      - name: Install PlatformIO
+        run: pip install platformio esptool==4.8.1
+
+      - name: Build firmware
+        run: pio run -d cyd -e ${{ matrix.env }}
+
+      - name: Merge into one image (flash at 0x0)
+        run: |
+          b=cyd/.pio/build/${{ matrix.env }}
+          boot_app0=$(find ~/.platformio/packages -name boot_app0.bin -path '*partitions*' | head -1)
+          [ -n "$boot_app0" ] || boot_app0=$(find ~/.platformio/packages -name boot_app0.bin | head -1)
+          [ -n "$boot_app0" ] || { echo "boot_app0.bin not found"; exit 1; }
+          mkdir -p dist
+          python -m esptool --chip esp32 merge_bin -o dist/mangle-${{ matrix.env }}.bin \
+            --flash_mode dio --flash_freq 80m --flash_size 4MB \
+            0x1000 $b/bootloader.bin 0x8000 $b/partitions.bin 0xe000 "$boot_app0" 0x10000 $b/firmware.bin
+          ls -l dist $b/firmware.bin
+
+      - uses: actions/upload-artifact@v7
+        with:
+          name: mangle-${{ matrix.env }}
+          path: dist/mangle-${{ matrix.env }}.bin
+          if-no-files-found: error
+
+  release:
+    if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')
+    needs: [test, build]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v8
+        with:
+          path: dist
+          pattern: mangle-cyd*
+          merge-multiple: true
+
+      - name: Attach to the release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          TAG: ${{ github.ref_name }}
+          SHA: ${{ github.sha }}
+        run: |
+          cd dist
+          sha256sum *.bin > SHA256SUMS-cyd
+          # Create the release if build.yml hasn't yet (it fills in the full
+          # notes when it finishes); a lost race just means it exists now.
+          if ! gh release view "$TAG" >/dev/null 2>&1; then
+            gh release create "$TAG" --verify-tag --title "Mangle $TAG (${SHA:0:7})" \
+              --notes "Built from \`${SHA:0:7}\` ($TAG). The Kindle files are still being built." || true
+          fi
+          gh release upload "$TAG" *.bin SHA256SUMS-cyd --clobber

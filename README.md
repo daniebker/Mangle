@@ -234,7 +234,8 @@ marked as latest. It contains:
 
 - `mangle-kual-kindlehf.zip`: the KUAL extension for firmware 5.16.3 and newer
 - `mangle-kual-kindlepw2.zip`: the KUAL extension for older 5.x firmware
-- `mangle-cyd35r.bin` / `mangle-cyd35c.bin`: Cheap Yellow Display firmware (see below)
+- `mangle-cyd35r.bin` / `mangle-cyd35c.bin` and `SHA256SUMS-cyd`: Cheap Yellow Display firmware
+  (see below), attached by `.github/workflows/firmware.yml`
 - `mangle-preprocessor.zip`: `prep.py`, `preview.py` and their requirements
 - `SHA256SUMS`
 
@@ -300,7 +301,9 @@ Copy the ZIPs to a FAT32 microSD card in a folder called `manga`, and put the ca
 
 ### Flashing
 
-Each release has `mangle-cyd35r.bin` (resistive) and `mangle-cyd35c.bin` (capacitive). Each is a
+Each release has `mangle-cyd35r.bin` (resistive) and `mangle-cyd35c.bin` (capacitive). The
+`CYD firmware` workflow also builds them on every branch push and pull request that touches the
+firmware; download them from the run's artifacts to try a branch. Each is a
 complete image: write it at offset `0x0`, for example with
 [ESP Web Tools](https://espressif.github.io/esptool-js/) in Chrome, or with esptool:
 
