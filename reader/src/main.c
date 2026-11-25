@@ -6,6 +6,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <sys/stat.h>
+#include <time.h>
 #include <unistd.h>
 
 #include "book.h"
@@ -18,6 +19,8 @@
 #include "nav.h"
 #include "settings.h"
 #include "state.h"
+#include "stats.h"
+#include "stats_view.h"
 
 static volatile sig_atomic_t quit;
 
@@ -74,12 +77,14 @@ typedef struct {
 	Cache*   cache;
 	uint8_t* frame;
 	int      turns;
+	StatRec  stats;
 } Reader;
 
 static void show(Reader* r, Pos p, bool force_flash)
 {
 	const char*  name = nav_image(r->book, p);
 	const Image* img  = cache_get(r->cache, name);
+	stats_page(&r->stats, p.page, time(NULL));
 	if (r->app->verbose)
 		fprintf(stderr, "mangle: show %s page=%d panel=%d mode=%s\n", name, p.page, p.panel,
 			p.mode == MODE_PANEL ? "panel" : "page");
@@ -192,13 +197,16 @@ static bool menu(Reader* r, Pos* pos)
 
 	const char* lib   = r->app->library ? "< Library" : "< Exit";
 	const char* set   = "Settings";
+	const char* sta   = "Stats";
 	int         lib_x = cw, set_x = lib_x + (int) strlen(lib) * cw + 4 * cw;
-	int         set_end = set_x + (int) strlen(set) * cw + 2 * cw;
+	int         sta_x   = set_x + (int) strlen(set) * cw + 4 * cw;
+	int         sta_end = sta_x + (int) strlen(sta) * cw + 2 * cw;
 
 	fill_rows(f, s, 0, bar_h, 255);
 	fill_rows(f, s, bar_h - 3, bar_h, 0);
 	font_draw(f, s->width, s->height, lib_x, scale * 6, scale, lib, 0);
 	font_draw(f, s->width, s->height, set_x, scale * 6, scale, set, 0);
+	font_draw(f, s->width, s->height, sta_x, scale * 6, scale, sta, 0);
 	display_frame(f, false);
 
 	bool leave = false;
@@ -212,8 +220,12 @@ static bool menu(Reader* r, Pos* pos)
 			break;
 		}
 		if (ev.kind == IN_TAP) {
-			if (ev.y < bar_h && ev.x >= set_x - 2 * cw && ev.x < set_end) {
+			if (ev.y < bar_h && ev.x >= set_x - 2 * cw && ev.x < sta_x - 2 * cw) {
 				leave = settings_screen(r, pos);
+				break;
+			}
+			if (ev.y < bar_h && ev.x >= sta_x - 2 * cw && ev.x < sta_end) {
+				leave = stats_screen(s, r->app->state_dir, &r->stats, f, &quit);
 				break;
 			}
 			leave = ev.y < bar_h && ev.x < set_x - 2 * cw;
@@ -294,7 +306,7 @@ static void read_book(App* app, const char* path)
 		fprintf(stderr, "mangle: book made for %dx%d, screen is %dx%d\n", b->screen_w, b->screen_h,
 			app->scr.width, app->scr.height);
 
-	Reader r = { app, b, cache_new(b), malloc((size_t) app->scr.width * app->scr.height), 0 };
+	Reader r = { app, b, cache_new(b), malloc((size_t) app->scr.width * app->scr.height), 0, { .seen = NULL } };
 	if (!r.cache || !r.frame) {
 		fprintf(stderr, "mangle: out of memory\n");
 		goto out;
@@ -306,6 +318,7 @@ static void read_book(App* app, const char* path)
 		pos = sv.pos;
 	nav_clamp(b, &pos);
 	state_set_last(app->state_dir, path);
+	stats_begin(&r.stats, app->state_dir, path, b->npages, pos.page, time(NULL));
 	show(&r, pos, true);
 
 	Gesture g        = { 0 };
@@ -329,6 +342,7 @@ static void read_book(App* app, const char* path)
 			nact += acts[nact] != ACT_NONE;
 			if (nact == 0 && app->settings.sleep && app->idle_ms > 0 && now_ms() - last_act >= app->idle_ms) {
 				g.pending = false;
+				stats_pause(&r.stats);    // asleep: not reading
 				if (sleep_screen(&r))
 					break;
 				show(&r, pos, true);
@@ -345,8 +359,10 @@ static void read_book(App* app, const char* path)
 			acts[nact++] = gesture_key(&g, ev.code, b->rtl);
 		}
 
-		if (rc > 0)
+		if (rc > 0) {
 			last_act = now_ms();
+			stats_activity(&r.stats, time(NULL));
+		}
 		bool done = false;
 		for (int i = 0; i < nact && !done; i++) {
 			Pos old = pos;
@@ -382,6 +398,7 @@ static void read_book(App* app, const char* path)
 			break;
 	}
 	save(&r, pos);
+	stats_end(&r.stats);
 out:
 	cache_free(r.cache);
 	free(r.frame);

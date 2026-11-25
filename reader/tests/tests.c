@@ -11,6 +11,7 @@
 #include "library.h"
 #include "nav.h"
 #include "state.h"
+#include "stats.h"
 #include "touch.h"
 
 static int fails, checks;
@@ -316,6 +317,104 @@ static void test_natcmp_state(void)
 	CHECK(system(cmd) == 0);
 }
 
+static void test_stats(void)
+{
+	setenv("TZ", "UTC0", 1);
+	tzset();
+	// Calendar helpers.
+	CHECK(stats_day_number(1970, 1, 1) == 0);
+	int y, m, d;
+	int nov25 = stats_day_number(2026, 11, 25);
+	stats_day_date(nov25, &y, &m, &d);
+	CHECK(y == 2026 && m == 11 && d == 25);
+	CHECK(stats_weekday(nov25) == 2);    // a Wednesday
+	stats_day_date(stats_day_number(2024, 2, 29) + 1, &y, &m, &d);
+	CHECK(m == 3 && d == 1);
+	char t[32];
+	stats_fmt_duration(t, sizeof(t), 3900);
+	CHECK(strcmp(t, "1h 05m") == 0);
+	stats_fmt_duration(t, sizeof(t), 59);
+	CHECK(strcmp(t, "0m") == 0);
+
+	char dir[] = "/tmp/mangle-stats-XXXXXX";
+	CHECK(mkdtemp(dir) != NULL);
+	time_t  T0 = (time_t) nov25 * 86400 + 10 * 3600;    // 25 Nov 2026 10:00 UTC
+	StatRec r;
+	// Pages seen once each; an idle gap splits the session at the last input.
+	stats_begin(&r, dir, "/mnt/us/manga/Vol 1.zip", 10, 0, T0);
+	stats_page(&r, 1, T0 + 30);
+	stats_page(&r, 2, T0 + 60);
+	stats_page(&r, 1, T0 + 90);
+	stats_activity(&r, T0 + 90 + STATS_IDLE_GAP + 1);    // came back: new session on page 1
+	stats_page(&r, 2, T0 + 500);
+	stats_pause(&r);                                    // sleep
+	stats_activity(&r, T0 + 600);                       // woke, then closed at once: too short
+	stats_end(&r);
+	CHECK(r.seen == NULL);
+	// Too short to count.
+	stats_begin(&r, dir, "Other.zip", 5, 0, T0 + 1000);
+	stats_page(&r, 1, T0 + 1000 + STATS_MIN_SESSION - 1);
+	stats_end(&r);
+	// Over midnight: 23:30 -> 00:30.
+	time_t late = (time_t) nov25 * 86400 + 23 * 3600 + 1800;
+	CHECK(stats_append(dir, late, late + 3600, 20, "/x/Other.zip") == 0);
+	// Two days earlier, for streaks.
+	CHECK(stats_append(dir, T0 - 2 * 86400, T0 - 2 * 86400 + 600, 4, "Vol 1.zip") == 0);
+
+	StatLog log;
+	CHECK(stats_load(dir, &log) == 0);
+	CHECK(log.n == 4 && log.nbooks == 2);
+	if (log.n == 4) {
+		CHECK(log.s[0].start == T0 && log.s[0].end == T0 + 90 && log.s[0].pages == 3);
+		CHECK(log.s[1].start == T0 + 391 && log.s[1].end == T0 + 500 && log.s[1].pages == 2);
+		CHECK(strcmp(log.books[log.s[0].book], "Vol 1.zip") == 0);
+		CHECK(strcmp(log.books[log.s[2].book], "Other.zip") == 0);
+	}
+	Stats st;
+	CHECK(stats_build(&log, &st) == 0);
+	CHECK(st.ndays == 3 && st.sessions == 4 && st.pages == 29);
+	const StatDay* day = stats_find(&st, nov25);
+	CHECK(day && day->seconds == 90 + 109 + 1800 && day->pages == 25 && day->sessions == 3);
+	day = stats_find(&st, nov25 + 1);
+	CHECK(day && day->seconds == 1800 && day->pages == 0 && day->sessions == 0);
+	CHECK(stats_find(&st, nov25 - 1) == NULL);
+	CHECK(st.hour_seconds[10] == 199 + 600 && st.hour_seconds[23] == 1800 && st.hour_seconds[0] == 1800);
+	CHECK(st.weekday_seconds[2] == 90 + 109 + 1800 && st.weekday_seconds[3] == 1800);
+	int cur, best;
+	stats_streaks(&st, nov25 + 1, &cur, &best);
+	CHECK(cur == 2 && best == 2);
+	stats_streaks(&st, nov25 + 2, &cur, &best);    // nothing yet today: yesterday still counts
+	CHECK(cur == 2);
+	stats_streaks(&st, nov25 + 3, &cur, &best);
+	CHECK(cur == 0 && best == 2);
+
+	StatMonth mo;
+	stats_month(&log, &st, 2026, 11, &mo);
+	CHECK(mo.days_in_month == 30 && mo.days_read == 3 && mo.sessions == 4 && mo.pages == 29 && mo.books == 2);
+	CHECK(mo.best_day == 25 && mo.day_seconds[24] == 1999 && mo.day_seconds[22] == 600);
+	CHECK(mo.seconds == 1999 + 1800 + 600);
+	stats_month(&log, &st, 2026, 2, &mo);
+	CHECK(mo.days_in_month == 28 && mo.seconds == 0 && mo.best_day == 0 && mo.books == 0);
+
+	// The running session can be added on top.
+	CHECK(stats_log_add(&log, T0 + 5000, T0 + 5060, 1, "New.zip") == 0 && log.nbooks == 3);
+	stats_clear(&st);
+	stats_free(&log);
+
+	// Garbage lines are skipped.
+	char path[300];
+	snprintf(path, sizeof(path), "%s/stats.log", dir);
+	FILE* f = fopen(path, "a");
+	fputs("junk\n5 4 1 backwards.zip\n7 9 1\n", f);
+	fclose(f);
+	CHECK(stats_load(dir, &log) == 0 && log.n == 4);
+	stats_free(&log);
+
+	char cmd[300];
+	snprintf(cmd, sizeof(cmd), "rm -rf '%s'", dir);
+	CHECK(system(cmd) == 0);
+}
+
 // Cache against a real ZIP made by the preprocessor (path from argv).
 static void test_cache(const char* zip)
 {
@@ -358,6 +457,7 @@ int main(int argc, char** argv)
 	test_touch();
 	test_compose();
 	test_natcmp_state();
+	test_stats();
 	const char* zip = argc > 1 ? argv[1] : getenv("MANGLE_TEST_ZIP");
 	if (zip)
 		test_cache(zip);

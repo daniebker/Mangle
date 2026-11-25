@@ -12,6 +12,7 @@
 #include "gesture.h"
 #include "input.h"
 #include "state.h"
+#include "stats_view.h"
 
 int natcmp(const char* a, const char* b)
 {
@@ -107,6 +108,10 @@ typedef struct {
 	int caption_h;          // two text lines under the cover
 	int rows, per;          // shelf rows per screen, books per screen
 } Layout;
+
+// "[stats]" in the header, after "MANGLE"; the rest of the header exits.
+#define STATS_X (12 + 8 * FONT_W * SCALE)
+#define STATS_END (STATS_X + 8 * FONT_W * SCALE)
 
 static Layout make_layout(const Screen* s)
 {
@@ -215,6 +220,7 @@ static void draw_shelf(const Screen* s, const Layout* L, char** names, Image* co
 	memset(buf, 0xFF, (size_t) W * H);
 	int line = FONT_H * SCALE;
 	font_draw(buf, W, H, 12, 12, SCALE, "MANGLE", 0x00);
+	font_draw(buf, W, H, STATS_X, 12, SCALE, "[stats]", 0x00);
 	{
 		const char* ex = "[exit]";
 		font_draw(buf, W, H, W - 12 - (int) strlen(ex) * FONT_W * SCALE, 12, SCALE, ex, 0x00);
@@ -330,7 +336,11 @@ char* library_pick(const Screen* s, const char* dir, const char* state_dir, vola
 				page--;
 			continue;
 		}
-		if (ev.y < L.top) {
+		if (ev.y < L.top && ev.kind == IN_TAP && ev.x >= STATS_X - FONT_W * SCALE && ev.x < STATS_END) {
+			if (stats_screen(s, state_dir, NULL, buf, quit))
+				break;
+			flash = true;
+		} else if (ev.y < L.top) {
 			break;
 		} else if (ev.kind == IN_LONG) {
 			continue;

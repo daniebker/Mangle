@@ -147,10 +147,32 @@ empty `panels` list means the page is always shown whole.
 - The next image (and the previous one) is decoded in the background while you read.
 - The page, panel and mode are saved for each book and restored when you open it again. The
   library shows how far you've got in each book.
+- Tap the top edge for the menu bar: `Library` (back to the shelf), `Settings` and `Stats`.
 
 Library screen: a shelf of covers (the first page of each book) with the title and progress
 under each one. Tap a cover to open it, tap the bottom strip (left/right half) to change shelf
-page, and tap the top strip to exit.
+page, tap `[stats]` for reading statistics, and tap anywhere else on the top strip to exit.
+
+### Reading statistics
+
+Every reading session is logged to `state/stats.log`, one line per session:
+`START END PAGES BOOK` (Unix times, number of different pages seen, book file name). A session
+starts when you open a book and ends when you close it, when the Kindle goes to sleep, or after
+5 minutes without a tap or key press (it ends at your last input, and the next input starts a new
+session). Sessions under 10 seconds aren't logged.
+
+Open the stats from the library's `[stats]` entry or from the menu bar's `Stats` entry while
+reading. The session you're in is included.
+
+- **Daily**: today's and this week's reading time and pages, your current and best streak (days
+  in a row with some reading), bar charts for the last 14 days, time of day and day of the week,
+  and all-time totals.
+- **Monthly**: a calendar shaded by how long you read each day (with the time in each cell),
+  then the month's reading time, pages, days read, sessions, books, average per reading day, best
+  day, and the change from the previous month. Tap the bottom strip (or use the page-turn
+  buttons) to go to the previous or next month; the middle goes back to this month.
+
+Days and hours use the Kindle's local time. If they look shifted, set `TZ` in `mangle.conf`.
 
 ### Building
 
