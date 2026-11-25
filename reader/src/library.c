@@ -325,6 +325,8 @@ char* library_pick(const Screen* s, const char* dir, const char* state_dir, vola
 			continue;
 		if (ev.kind == IN_QUIT)
 			break;
+		if (ev.kind == IN_DRAG || ev.kind == IN_PINCH)
+			continue;
 		if (ev.kind == IN_KEY) {
 			Gesture g = { 0 };
 			Action  a = gesture_key(&g, ev.code, false);

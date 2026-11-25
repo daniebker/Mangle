@@ -21,6 +21,7 @@
 #include "state.h"
 #include "stats.h"
 #include "stats_view.h"
+#include "zoom.h"
 
 static volatile sig_atomic_t quit;
 
@@ -78,6 +79,9 @@ typedef struct {
 	uint8_t* frame;
 	int      turns;
 	StatRec  stats;
+	Zoom     zm;          // pinch zoom of the current view; reset when moving on
+	ZoomBase base;        // what the last show() fitted to the screen
+	bool     have_base;
 } Reader;
 
 static void show(Reader* r, Pos p, bool force_flash)
@@ -86,17 +90,33 @@ static void show(Reader* r, Pos p, bool force_flash)
 	const Image* img  = cache_get(r->cache, name);
 	stats_page(&r->stats, p.page, time(NULL));
 	if (r->app->verbose)
-		fprintf(stderr, "mangle: show %s page=%d panel=%d mode=%s\n", name, p.page, p.panel,
-			p.mode == MODE_PANEL ? "panel" : "page");
+	{
+		if (zoom_active(&r->zm))
+			fprintf(stderr, "mangle: show %s page=%d panel=%d mode=%s zoom=%.2f\n", name, p.page, p.panel,
+				p.mode == MODE_PANEL ? "panel" : "page", r->zm.z);
+		else
+			fprintf(stderr, "mangle: show %s page=%d panel=%d mode=%s\n", name, p.page, p.panel,
+				p.mode == MODE_PANEL ? "panel" : "page");
+	}
 	if (!img) {
 		const char* lines[] = { NULL, NULL, "Cannot load image:", name };
+		r->have_base         = false;
 		display_text(lines, 4, true);
 	} else {
-		int rect[4];
-		if (nav_rect(r->book, p, rect))
-			compose_rect(&r->app->scr, img, rect, r->frame);
-		else
-			compose(&r->app->scr, img, r->frame);
+		const Screen* scr = &r->app->scr;
+		int           rect[4];
+		bool          panel = nav_rect(r->book, p, rect);
+		if (!panel)
+			rect[0] = rect[1] = 0, rect[2] = img->w, rect[3] = img->h;
+		r->base      = zoom_base(rect, panel, scr->width, scr->height);
+		r->have_base = true;
+		zoom_clamp(&r->zm, &r->base);
+		if (!zoom_active(&r->zm) || compose_view(scr, img, &r->base, &r->zm, r->frame) != 0) {
+			if (panel)
+				compose_rect(scr, img, rect, r->frame);
+			else
+				compose(scr, img, r->frame);
+		}
 		r->turns++;
 		bool flash = force_flash || (r->app->flash_every > 0 && r->turns % r->app->flash_every == 0);
 		display_frame(r->frame, flash);
@@ -306,7 +326,8 @@ static void read_book(App* app, const char* path)
 		fprintf(stderr, "mangle: book made for %dx%d, screen is %dx%d\n", b->screen_w, b->screen_h,
 			app->scr.width, app->scr.height);
 
-	Reader r = { app, b, cache_new(b), malloc((size_t) app->scr.width * app->scr.height), 0, { .seen = NULL } };
+	Reader r = { app, b, cache_new(b), malloc((size_t) app->scr.width * app->scr.height), 0, { .seen = NULL },
+		     { 1.0, 0, 0 }, { 0 }, false };
 	if (!r.cache || !r.frame) {
 		fprintf(stderr, "mangle: out of memory\n");
 		goto out;
@@ -357,6 +378,17 @@ static void read_book(App* app, const char* path)
 			acts[nact++] = gesture_long(&g, ev.x, app->scr.width);
 		} else if (ev.kind == IN_KEY) {
 			acts[nact++] = gesture_key(&g, ev.code, b->rtl);
+		} else if (ev.kind == IN_PINCH) {
+			// Zoom around the fingers. Drops a pending centre tap: it was
+			// part of the same gesture, not a page turn.
+			g.pending = false;
+			if (r.have_base &&
+			    zoom_pinch(&r.zm, &r.base, ev.x, ev.y, ev.x + ev.dx, ev.y + ev.dy, ev.scale))
+				show(&r, pos, false);
+		} else if (ev.kind == IN_DRAG && zoom_active(&r.zm)) {
+			g.pending = false;
+			if (r.have_base && zoom_pan(&r.zm, &r.base, ev.dx, ev.dy))
+				show(&r, pos, false);
 		}
 
 		if (rc > 0) {
@@ -368,15 +400,22 @@ static void read_book(App* app, const char* path)
 			Pos old = pos;
 			switch (acts[i]) {
 				case ACT_FORWARD:
-					if (nav_next(b, &pos))
+					if (nav_next(b, &pos)) {
+						zoom_reset(&r.zm);
 						show(&r, pos, false);
+					}
 					break;
 				case ACT_BACK:
-					if (nav_prev(b, &pos))
+					if (nav_prev(b, &pos)) {
+						zoom_reset(&r.zm);
 						show(&r, pos, false);
+					}
 					break;
 				case ACT_TOGGLE:
-					nav_toggle(b, &pos);
+					// Zoomed: the double tap zooms back out instead.
+					if (!zoom_active(&r.zm))
+						nav_toggle(b, &pos);
+					zoom_reset(&r.zm);
 					show(&r, pos, true);
 					break;
 				case ACT_REFRESH:

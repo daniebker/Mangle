@@ -121,4 +121,30 @@ python3 -c "import sys;d=open(sys.argv[1],'rb').read()[15:];sys.exit(sum(b<128 f
 # Library header: [stats] opens the stats screen (not exit), Back returns to the shelf.
 printf 'tap 150 10\ntap 10 20\ntap 300 10\n' | $BIN -l "$TMP/lib" -s "$TMP/state_stats" >"$TMP/out" 2>"$TMP/err"
 [ "$(grep -c '^FRAME' "$TMP/out")" = 3 ] || fail "stats from the library"
+
+# Pinch zoom: spread 2x on the cover, drag to pan, pinch in to fit again;
+# zoom again then turn the page (zoom resets); zoom, double-tap centre zooms
+# out without switching mode. Drags and pinches on the library/stats are ignored.
+printf 'pinch 300 400 2\ndrag 300 400 -100 0\npinch 300 400 0.3\npinch 300 400 3\ntap 10 400\npinch 300 400 2\ntap 300 400\nsleep 50\ntap 300 400\nquit\n' |
+	MANGLE_SIM_DIR="$TMP" $BIN -v -s "$TMP/state_zoom" "$ZIP" >"$TMP/out" 2>"$TMP/err"
+grep 'mangle: show' "$TMP/err" | sed 's/.*show //' >"$TMP/shown"
+cat >"$TMP/want" <<W
+p001.png page=0 panel=0 mode=panel
+p001.png page=0 panel=0 mode=panel zoom=2.00
+p001.png page=0 panel=0 mode=panel zoom=2.00
+p001.png page=0 panel=0 mode=panel
+p001.png page=0 panel=0 mode=panel zoom=3.00
+p002.png page=1 panel=-1 mode=panel
+p002.png page=1 panel=-1 mode=panel zoom=2.00
+p002.png page=1 panel=-1 mode=panel
+W
+diff "$TMP/want" "$TMP/shown" || fail "pinch zoom"
+# The zoomed and panned frames differ from the fitted one and each other.
+cmp -s "$TMP/frame_0001.pgm" "$TMP/frame_0002.pgm" && fail "zoom did not change the frame"
+cmp -s "$TMP/frame_0002.pgm" "$TMP/frame_0003.pgm" && fail "drag did not pan"
+cmp -s "$TMP/frame_0001.pgm" "$TMP/frame_0004.pgm" || fail "pinching in should restore the fitted view"
+# Not zoomed: a drag does nothing.
+printf 'drag 300 400 -100 0\nquit\n' | $BIN -v -s "$TMP/state_zoom2" "$ZIP" >"$TMP/out" 2>"$TMP/err"
+[ "$(grep -c '^FRAME' "$TMP/out")" = 1 ] || fail "drag without zoom redrew"
+
 echo "sim tests passed"
