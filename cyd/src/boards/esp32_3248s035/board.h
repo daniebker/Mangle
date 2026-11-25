@@ -1,5 +1,5 @@
 // Pins and options for the ESP32-3248S035 "Cheap Yellow Display" (3.5",
-// ST7796 320x480). Override any of these with -D in platformio.ini.
+// ESP32, ST7796 320x480). Override any of these with -D in platformio.ini.
 #pragma once
 
 // Display: ST7796 on HSPI.
@@ -100,3 +100,8 @@
 
 #define NATIVE_W 320
 #define NATIVE_H 480
+
+// Resistive panels jitter: a press that moves less than this is still a tap.
+#define TAP_PX 14
+// No PSRAM: pages are drawn straight from the card, nothing decoded ahead.
+#define BOARD_PREFETCH 0

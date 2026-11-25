@@ -89,6 +89,9 @@ grep -q 'need the date' "$TMP/err" || fail "no explanation without a clock"
 # Capacitive board: pinch zoom; resistive: pinches can't happen.
 printf '%s\n' 'tap 80 150' 'pinch 160 240 2' 'quit' | MANGLE_SIM_DEVICE=cyd35c $BIN -v -l "$TMP/lib" -s "$TMP/state4" >"$TMP/out" 2>"$TMP/err"
 grep -q 'zoom=2.00' "$TMP/err" || fail "no pinch zoom on the capacitive board"
+# The Freenove ESP32-S3 board: same app and screen, capacitive, no calibration row.
+printf '%s\n' 'tap 80 150' 'pinch 160 240 2' 'quit' | MANGLE_SIM_DEVICE=freenove35 $BIN -v -l "$TMP/lib" -s "$TMP/state6" >"$TMP/out" 2>"$TMP/err"
+grep -q 'zoom=2.00' "$TMP/err" && grep -q '^SCREEN 320x480 freenove35' "$TMP/out" || fail "freenove35 profile"
 
 # A broken book shows a message instead of crashing.
 printf 'not a zip' >"$TMP/lib/0broken.zip"

@@ -26,9 +26,11 @@ import tempfile
 from pathlib import Path
 
 HERE = Path(__file__).resolve().parent
+# Board id -> (description, ESP Web Tools chip family).
 BOARDS = {
-    "cyd35r": "ESP32-3248S035R (resistive touch)",
-    "cyd35c": "ESP32-3248S035C (capacitive touch)",
+    "cyd35r": ("ESP32-3248S035R (resistive touch)", "ESP32"),
+    "cyd35c": ("ESP32-3248S035C (capacitive touch)", "ESP32"),
+    "freenove35": ("Freenove ESP32-S3 Display 3.5\" (FNK0104N)", "ESP32-S3"),
 }
 SAFE_TAG = re.compile(r"^[A-Za-z0-9._-]+$")
 
@@ -95,7 +97,7 @@ def add_release(info: dict, folder: Path, out: Path) -> dict | None:
     sums = checksums(folder)
     dest = out / "firmware" / tag
     boards = {}
-    for board, label in BOARDS.items():
+    for board, (label, chip) in BOARDS.items():
         src = folder / f"mangle-{board}.bin"
         if not src.exists():
             continue
@@ -109,7 +111,7 @@ def add_release(info: dict, folder: Path, out: Path) -> dict | None:
             "name": f"Mangle for {label}",
             "version": tag,
             "new_install_prompt_erase": True,
-            "builds": [{"chipFamily": "ESP32", "parts": [{"path": src.name, "offset": 0}]}],
+            "builds": [{"chipFamily": chip, "parts": [{"path": src.name, "offset": 0}]}],
         }
         (dest / f"{board}.json").write_text(json.dumps(manifest, indent=1) + "\n")
         boards[board] = {"manifest": f"firmware/{tag}/{board}.json", "size": len(data), "sha256": digest}

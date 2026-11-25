@@ -5,7 +5,7 @@
 #   ./build.sh kindlepw2         Kindle build for older 5.x firmware (soft-float)
 #   ./build.sh custom --cross P  Kindle build with another toolchain (P = triplet, e.g. arm-linux-gnueabihf)
 #   ./build.sh sim               desktop simulator: common/build/mangle
-#   ./build.sh cyd [ENV]         Cheap Yellow Display firmware (PlatformIO; ENV cyd35r or cyd35c, default both)
+#   ./build.sh cyd [ENV]         ESP32 board firmware (PlatformIO; ENV cyd35r, cyd35c or freenove35, default all)
 #   ./build.sh test              preprocessor, shared app (as Kindle and CYD) and Kindle tests
 #   ./build.sh toolchain [T]     install koxtoolchain target T (default kindlehf) into ~/x-tools
 #   ./build.sh clean             remove build output
@@ -124,7 +124,7 @@ case "$CMD" in
 		;;
 	cyd)
 		need pio "install PlatformIO: pip install platformio"
-		envs=${ARG:-cyd35r cyd35c}
+		envs=${ARG:-cyd35r cyd35c freenove35}
 		for e in $envs; do
 			say "Building CYD firmware ($e)"
 			(cd "$ROOT/cyd" && pio run -e "$e")

@@ -1,6 +1,6 @@
 # Mangle
 
-Read manga panel by panel on a jailbroken Kindle, or on a 3.5" ESP32 "Cheap Yellow Display".
+Read manga panel by panel on a jailbroken Kindle, or on a 3.5" ESP32 touch-screen board.
 
 There are two parts:
 
@@ -10,7 +10,8 @@ There are two parts:
 2. **Reader** (C). It opens those ZIPs and shows them panel by panel or page by page. One app,
    built for two devices with the same features:
    - **Kindle** (`reader/`): a KUAL extension for jailbroken Kindles.
-   - **Cheap Yellow Display** (`cyd/`): firmware for the 3.5" ESP32-3248S035 board.
+   - **ESP32 boards** (`cyd/`): firmware for the 3.5" ESP32-3248S035 "Cheap Yellow Display"
+     and the Freenove ESP32-S3 Display 3.5" (FNK0104N).
 
 ### Code layout
 
@@ -20,7 +21,7 @@ There are two parts:
 | `common/sim` | A desktop simulator of that interface, to run and test the app as either device. |
 | `common/tests` | Unit tests and end-to-end tests of the app, as a Kindle and as both CYD boards. |
 | `reader/` | The Kindle's hardware layer (`src/hal_kindle.c`: FBInk e-ink display, evdev touch and buttons, frontlight, suspend) and the KUAL packaging. |
-| `cyd/` | The CYD's hardware layer (`src/board/`: ST7796 LCD, XPT2046 or GT911 touch, SD card, backlight, light sleep, Wi-Fi clock) and the PlatformIO project. |
+| `cyd/` | The ESP32 boards' hardware layers and the PlatformIO project: `src/esp32/` is what they share (input loop, sleep, backlight, Wi-Fi clock), `src/boards/<board>/` each board's display, touch and SD card. |
 
 All the heavy work (finding panels, resizing, dithering) happens on the computer. The Kindle
 only decodes small PNGs that are already the right size, so page turns stay fast.
@@ -312,10 +313,23 @@ Preprocessor tests: `cd preprocessor && python -m pytest tests`.
 
 ## 3. Cheap Yellow Display firmware
 
-`cyd/` is the reader as firmware for the **ESP32-3248S035**, the 3.5" Cheap Yellow Display
-(ST7796 320x480 LCD, SD card slot). Both versions of the board work: `R` (resistive touch,
-XPT2046) and `C` (capacitive touch, GT911). It is the same app as on the Kindle (see the Reader
-section for the controls); only the hardware layer in `cyd/src/board/` is its own.
+`cyd/` is the reader as firmware for 3.5" 320x480 ESP32 touch-screen boards. It is the same app
+as on the Kindle (see the Reader section for the controls); only the hardware layer is its own.
+
+| Board | Chip | Screen and touch | Firmware |
+|---|---|---|---|
+| ESP32-3248S035**R** ("Cheap Yellow Display") | ESP32 | ST7796 on SPI, resistive (XPT2046) | `cyd35r` |
+| ESP32-3248S035**C** | ESP32 | ST7796 on SPI, capacitive (GT911) | `cyd35c` |
+| Freenove ESP32-S3 Display 3.5" (FNK0104N) | ESP32-S3, 8 MB PSRAM | ST77922 IPS on QSPI, capacitive | `freenove35` |
+
+The ESP32-3248S035 boards have a CH340 USB-serial chip; the Freenove board's USB-C goes to the
+ESP32-S3 itself (its port is `/dev/cu.usbmodem…` on a Mac). With its PSRAM, the Freenove board
+decodes the next pages ahead like the Kindle, and turns pages faster.
+
+The Freenove panel's initialisation sequence (power, gamma and timing registers for that glass)
+comes from Freenove's own library, which is licensed CC BY-NC-SA 3.0 and so can't be part of
+Mangle's AGPL source. Like FBInk for the Kindle, it is downloaded when the firmware is built
+(`cyd/src/boards/freenove_fnk0104n/fetch_init.py`, pinned to a Freenove commit).
 
 ### Making books for it
 
@@ -337,11 +351,12 @@ on a desktop computer, plug the board in over USB, choose a release and your boa
 *Connect and install*. It lists the firmware of the newest releases; add `?tag=v0.9.0` to the
 address to preselect one.
 
-Each release also has `mangle-cyd35r.bin` (resistive) and `mangle-cyd35c.bin` (capacitive). Each
-is a complete image: write it at offset `0x0`, for example with esptool:
+Each release also has `mangle-cyd35r.bin`, `mangle-cyd35c.bin` and `mangle-freenove35.bin`.
+Each is a complete image: write it at offset `0x0`, for example with esptool:
 
 ```sh
 esptool.py --chip esp32 write_flash 0x0 mangle-cyd35r.bin
+esptool.py --chip esp32s3 write_flash 0x0 mangle-freenove35.bin
 ```
 
 The `CYD firmware` workflow also builds them on every branch push and pull request that touches
@@ -361,11 +376,12 @@ To build it yourself, install [PlatformIO](https://platformio.org/) (`pip instal
 
 ```sh
 cd cyd
-pio run -e cyd35r -t upload      # resistive board (cyd35c for capacitive)
+pio run -e cyd35r -t upload      # or cyd35c, freenove35
 pio device monitor               # log at 115200 baud
 ```
 
-or `./build.sh cyd` from the repository root. Pins and options are in `cyd/src/board/board.h`.
+or `./build.sh cyd` from the repository root. Pins and options are in each board's `board.h`
+under `cyd/src/boards/`.
 
 ### Using it
 
@@ -374,6 +390,7 @@ The controls, settings, library and statistics are the Reader section's. Specifi
 - The resistive board asks for touch calibration on first start (press three crosses). Hold the
   screen while powering on to calibrate again. It can't pinch: hold a side to zoom.
 - `Invert panel` in the settings fixes displays that come up as a negative.
+- On the Freenove board, rotation is done in software (its panel can only flip 180 degrees).
 - Positions, settings, statistics and cover thumbnails are kept in `manga/.mangle/` on the card.
 - **Clock for reading statistics**: put a `wifi.txt` in `manga/.mangle/` with the network name
   on the first line, the password on the second, and optionally your time zone in POSIX form on
@@ -392,7 +409,8 @@ scaler; it just decodes the next pages ahead into memory.
 
 ### Testing on the desktop
 
-Everything but `cyd/src/board/` is the shared app, tested on the desktop as both boards:
+Everything but the hardware layers is the shared app, tested on the desktop as each board
+(`MANGLE_SIM_DEVICE=cyd35r|cyd35c|freenove35`):
 
 ```sh
 make -C common test

@@ -1,31 +1,25 @@
-// Hardware layer for the ESP32-3248S035 (3.5" Cheap Yellow Display):
-// ST7796 display, XPT2046 (resistive) or GT911 (capacitive) touch, SD card,
-// PWM backlight, light sleep, and the clock (set over Wi-Fi at power-on).
-// Everything else is the shared app in common/src.
+// Board layer for the ESP32-3248S035 (3.5" Cheap Yellow Display, ESP32):
+// ST7796 display on SPI, XPT2046 (resistive) or GT911 (capacitive) touch,
+// SD card on SPI. The rest of the ESP32 side is cyd/src/esp32/esp32_hal.cpp.
 #include <Arduino.h>
 #include <SD.h>
 #include <SPI.h>
 #include <driver/gpio.h>
 #include <esp_sleep.h>
 #include <math.h>
-#include <WiFi.h>
-#include <stdarg.h>
-#include <stdio.h>
 #include <string.h>
-#include <sys/stat.h>
-#include <time.h>
 
 #ifdef TOUCH_GT911
 #include <Wire.h>
 #endif
 
+#include "board.h"
+#include "esp32_board.h"
 #include "hal.h"
 extern "C" {
 #include "store.h"
-#include "tin.h"
 #include "ui.h"
 }
-#include "board.h"
 
 static SPIClass lcd_spi(HSPI);
 static SPIClass sd_spi(VSPI);
@@ -33,7 +27,6 @@ static SPIClass sd_spi(VSPI);
 static int      rotation;
 static bool     night, invert_panel;
 static uint16_t lut[256];    // gray -> RGB565, big-endian (as sent)
-static int      bl_pct = 80;
 
 // ---- display ------------------------------------------------------------------------
 
@@ -82,8 +75,9 @@ static void build_lut(void)
 }
 
 static void flush_rows(void);
+static void touch_init(void);
 
-static void lcd_init(void)
+void board_init(void)
 {
 	pinMode(LCD_CS, OUTPUT);
 	pinMode(LCD_DC, OUTPUT);
@@ -128,6 +122,7 @@ static void lcd_init(void)
 	lcd_begin();
 	lcd_cmd(0x29);    // display on
 	lcd_end();
+	touch_init();
 }
 
 int hal_width(void)
@@ -239,38 +234,6 @@ void hal_set_invert(bool on)
 	lcd_begin();
 	lcd_cmd(on ? 0x21 : 0x20);
 	lcd_end();
-}
-
-static void backlight_raw(int pct)
-{
-	int duty = pct * 255 / 100;
-#if ESP_ARDUINO_VERSION_MAJOR >= 3
-	ledcWrite(LCD_BL, duty);
-#else
-	ledcWrite(0, duty);
-#endif
-}
-
-bool hal_has_backlight(void)
-{
-	return true;
-}
-
-void hal_backlight(int pct)
-{
-	bl_pct = pct < 5 ? 5 : pct > 100 ? 100 : pct;
-	backlight_raw(bl_pct);
-}
-
-static void backlight_init(void)
-{
-#if ESP_ARDUINO_VERSION_MAJOR >= 3
-	ledcAttach(LCD_BL, 5000, 8);
-#else
-	ledcSetup(0, 5000, 8);
-	ledcAttachPin(LCD_BL, 0);
-#endif
-	backlight_raw(0);
 }
 
 // ---- touch ----------------------------------------------------------------------------
@@ -583,11 +546,9 @@ static void touch_sleep_prepare(void)
 
 #endif
 
-// ---- events ----------------------------------------------------------------------------
+// ---- board interface ------------------------------------------------------------------------
 
-static Tin tin;
-
-static int touch_now(TPoint* out)
+int board_touch(TPoint* out)
 {
 	TPoint p[2];
 	int    n = touch_read(p);
@@ -596,118 +557,22 @@ static int touch_now(TPoint* out)
 	return n;
 }
 
-int hal_wait(InEvent* ev, int timeout_ms)
+void board_display_sleep(bool sleep)
 {
 	flush_rows();
-	int64_t end = timeout_ms >= 0 ? hal_ms() + timeout_ms : 0;
-	for (;;) {
-		TPoint p[2];
-		int    n = touch_now(p);
-		if (tin_feed(&tin, n, p, hal_ms(), ev))
-			return 1;
-		if (timeout_ms >= 0 && hal_ms() >= end)
-			return 0;
-		delay(10);
-	}
-}
-
-bool hal_sleep(void)
-{
-	flush_rows();
-	backlight_raw(0);
 	lcd_begin();
-	lcd_cmd(0x10);    // display sleep in (keeps its memory)
+	lcd_cmd(sleep ? 0x10 : 0x11);    // sleep in keeps the display memory
 	lcd_end();
-	for (;;) {
-		TPoint p[2];
-		touch_sleep_prepare();
-		esp_sleep_enable_timer_wakeup(150 * 1000);
-		esp_light_sleep_start();
-		if (touch_now(p) > 0)
-			break;
-	}
-	// Swallow the waking touch.
-	TPoint p[2];
-	while (touch_now(p) > 0)
-		delay(20);
-	tin_init(&tin, 14);    // resistive panels jitter: 14 px still counts as a tap
-	lcd_begin();
-	lcd_cmd(0x11);    // sleep out
-	lcd_end();
-	delay(120);
-	backlight_raw(bl_pct);
-	return true;
+	if (!sleep)
+		delay(120);
 }
 
-// ---- system ----------------------------------------------------------------------------
-
-bool hal_can_exit(void)
+void board_sleep_prepare(void)
 {
-	return false;
+	touch_sleep_prepare();
 }
 
-bool hal_clock_ok(void)
-{
-	return time(NULL) > 1577836800;    // after 2020: set over Wi-Fi at power-on
-}
-
-int64_t hal_ms(void)
-{
-	return (int64_t) millis();
-}
-
-void hal_log(const char* fmt, ...)
-{
-	char    buf[256];
-	va_list ap;
-	va_start(ap, fmt);
-	vsnprintf(buf, sizeof(buf), fmt, ap);
-	va_end(ap);
-	Serial.print("mangle: ");
-	Serial.print(buf);
-}
-
-// The board has no clock that survives power-off. If the state folder has
-// wifi.txt (network name, password, and optionally a POSIX time zone such as
-// CET-1CEST,M3.5.0,M10.5.0/3, one per line), connect once at power-on, set
-// the time, and turn Wi-Fi off again. Without it, reading statistics are off.
-static void clock_sync(void)
-{
-	FILE* f = fopen(STATE_DIR "/wifi.txt", "r");
-	if (!f)
-		return;
-	char ssid[64] = "", pass[96] = "", tz[64] = "UTC0";
-	if (fgets(ssid, sizeof(ssid), f) && fgets(pass, sizeof(pass), f) && !fgets(tz, sizeof(tz), f))
-		snprintf(tz, sizeof(tz), "UTC0");
-	fclose(f);
-	ssid[strcspn(ssid, "\r\n")] = 0;
-	pass[strcspn(pass, "\r\n")] = 0;
-	tz[strcspn(tz, "\r\n")]     = 0;
-	if (!ssid[0])
-		return;
-	const char* lines[] = { "Setting the clock", "", ssid };
-	ui_message(lines, 3);
-	flush_rows();
-	WiFi.mode(WIFI_STA);
-	WiFi.begin(ssid, pass);
-	for (int i = 0; i < 100 && WiFi.status() != WL_CONNECTED; i++)
-		delay(100);
-	if (WiFi.status() == WL_CONNECTED) {
-		configTzTime(tz[0] ? tz : "UTC0", "pool.ntp.org", "time.google.com");
-		struct tm tm;
-		if (getLocalTime(&tm, 8000))
-			hal_log("clock set: %04d-%02d-%02d %02d:%02d\n", tm.tm_year + 1900, tm.tm_mon + 1, tm.tm_mday,
-				tm.tm_hour, tm.tm_min);
-		else
-			hal_log("no time from the network\n");
-	} else {
-		hal_log("cannot join Wi-Fi network %s\n", ssid);
-	}
-	WiFi.disconnect(true);
-	WiFi.mode(WIFI_OFF);    // frees the radio's memory for the reader
-}
-
-static bool sd_mount(void)
+bool board_sd_mount(void)
 {
 	sd_spi.begin(SD_SCLK, SD_MISO, SD_MOSI, SD_CS);
 	if (SD.begin(SD_CS, sd_spi, SD_SPI_HZ, "/sd"))
@@ -715,23 +580,12 @@ static bool sd_mount(void)
 	return SD.begin(SD_CS, sd_spi, 4000000, "/sd");    // slow cards and long wires
 }
 
-extern "C" void cyd_init(void)
+void board_sd_end(void)
 {
-	backlight_init();
-	lcd_init();
-	touch_init();
-	tin_init(&tin, 14);    // resistive panels jitter: 14 px still counts as a tap
-	hal_backlight(bl_pct);
-	hal_log("free heap %u, largest block %u\n", (unsigned) ESP.getFreeHeap(), (unsigned) ESP.getMaxAllocHeap());
-	while (!sd_mount()) {
-		const char* lines[] = { "No SD card", "", "Insert a FAT32 card with your books in /manga" };
-		ui_message(lines, 3);
-		flush_rows();
-		SD.end();
-		delay(2000);
-	}
-	mkdir(LIBRARY_DIR, 0755);
-	mkdir(STATE_DIR, 0755);
-	hal_log("SD card: %llu MB\n", (unsigned long long) (SD.cardSize() / (1024 * 1024)));
-	clock_sync();
+	SD.end();
+}
+
+uint64_t board_sd_size(void)
+{
+	return SD.cardSize();
 }

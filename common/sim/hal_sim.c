@@ -1,7 +1,7 @@
 // Desktop simulator HAL: runs the real app with frames written as PGM files
 // and input read from stdin, so every device's behaviour can be tested here.
 //
-//   MANGLE_SIM_DEVICE=kindle|cyd35r|cyd35c   what to behave like (default kindle)
+//   MANGLE_SIM_DEVICE=kindle|cyd35r|cyd35c|freenove35   what to behave like (default kindle)
 //   MANGLE_SIM_SCREEN=WxH                    physical screen (default 600x800)
 //   MANGLE_SIM_DIR=frames                    write frame_NNNN.pgm there (unset = don't)
 //   MANGLE_SIM_NOCLOCK=1                     no date (a CYD without Wi-Fi time)
@@ -29,9 +29,9 @@ static volatile int quit_flag;
 int hal_open(void)
 {
 	const char* d = getenv("MANGLE_SIM_DEVICE");
-	if (d && strncmp(d, "cyd", 3) == 0) {
-		cyd        = true;
-		multitouch = strcmp(d, "cyd35c") == 0;
+	if (d && (strncmp(d, "cyd", 3) == 0 || strcmp(d, "freenove35") == 0)) {
+		cyd        = true;    // an ESP32 board: LCD, no exit, invert panel setting
+		multitouch = strcmp(d, "cyd35r") != 0;
 		pw = 320, ph = 480;
 	}
 	const char* e = getenv("MANGLE_SIM_SCREEN");

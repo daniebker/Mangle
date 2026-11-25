@@ -110,7 +110,7 @@
 <body>
 <main>
   <h1>Mangle CYD Flasher</h1>
-  <p class="lead">Install the Mangle manga reader on a 3.5" Cheap Yellow Display (ESP32-3248S035) straight from your browser.</p>
+  <p class="lead">Install the Mangle manga reader on a 3.5" ESP32 display board (ESP32-3248S035 "Cheap Yellow Display" or Freenove ESP32-S3 Display) straight from your browser.</p>
 
   <div class="card" id="installer">
     <div class="step">
@@ -130,8 +130,10 @@
             <span>ESP32-3248S035<b>R</b><small>Resistive touch (XPT2046): the screen gives a little when pressed</small></span></label>
           <label><input type="radio" name="board" value="cyd35c">
             <span>ESP32-3248S035<b>C</b><small>Capacitive touch (GT911): glass, like a phone</small></span></label>
+          <label><input type="radio" name="board" value="freenove35">
+            <span>Freenove ESP32-S3 Display 3.5"<small>FNK0104N: ESP32-S3, IPS screen, capacitive touch, USB-C on the chip</small></span></label>
         </div>
-        <p class="meta">The model is printed on the back of the board.</p>
+        <p class="meta">The model is printed on the back of the board. Not sure? The installer reports the chip: ESP32-3248S035 boards have an ESP32, the Freenove board an ESP32-S3.</p>
       </div>
     </div>
     <div class="step">
@@ -168,7 +170,7 @@
     <details>
       <summary>If it doesn't connect</summary>
       <ul>
-        <li>No port in the list: most CYD boards use a CH340 USB chip, which needs a driver on Windows and older macOS. Some USB cables only carry power; try another.</li>
+        <li>No port in the list: the ESP32-3248S035 boards use a CH340 USB chip, which needs a driver on Windows and older macOS. Some USB cables only carry power; try another.</li>
         <li>Stuck on "Connecting": hold the <b>BOOT</b> button on the board while you click Connect, and let go once installing starts.</li>
         <li>Picture looks like a negative after installing: turn on <i>Invert panel</i> in the reader's Settings.</li>
       </ul>

@@ -128,6 +128,7 @@ jobs:
           | \`mangle-preprocessor.zip\` | The desktop preprocessor (\`prep.py\`, \`preview.py\`, with Kumiko) |
           | \`mangle-cyd35r.bin\` | Cheap Yellow Display 3.5" firmware, resistive touch (ESP32-3248S035R): flash at 0x0 |
           | \`mangle-cyd35c.bin\` | Cheap Yellow Display 3.5" firmware, capacitive touch (ESP32-3248S035C): flash at 0x0 |
+          | \`mangle-freenove35.bin\` | Freenove ESP32-S3 Display 3.5" firmware (FNK0104N): flash at 0x0 |
 
           Unzip the KUAL package into \`/mnt/us/extensions/\` on the Kindle.
           The CYD firmware is attached by its own workflow, so it may appear a few minutes later
