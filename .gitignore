@@ -7,3 +7,5 @@ reader/build/
 reader/third_party/FBInk/
 dist/
 *.cbz
+cyd/build/
+cyd/.pio/

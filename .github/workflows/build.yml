@@ -1,6 +1,6 @@
 name: Build
 
-# Tests and Kindle builds run on every push and pull request.
+# Tests, Kindle and CYD firmware builds run on every push and pull request.
 # Pushing a version tag (v*) also publishes the built files as a GitHub release.
 
 on:
@@ -68,6 +68,41 @@ jobs:
           path: reader/dist/mangle-kual-${{ matrix.target }}.zip
           if-no-files-found: error
 
+  cyd:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        env: [cyd35r, cyd35c]
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Cache PlatformIO
+        uses: actions/cache@v6
+        with:
+          path: ~/.platformio
+          key: platformio-${{ hashFiles('cyd/platformio.ini') }}
+
+      - name: Install PlatformIO
+        run: pip install platformio esptool==4.8.1
+
+      - name: Build firmware
+        run: cd cyd && pio run -e ${{ matrix.env }}
+
+      - name: Merge into one image (flash at 0x0)
+        run: |
+          b=cyd/.pio/build/${{ matrix.env }}
+          boot_app0=$(find ~/.platformio/packages -name boot_app0.bin | head -1)
+          python -m esptool --chip esp32 merge_bin -o mangle-${{ matrix.env }}.bin \
+            --flash_mode dio --flash_freq 80m --flash_size 4MB \
+            0x1000 $b/bootloader.bin 0x8000 $b/partitions.bin 0xe000 "$boot_app0" 0x10000 $b/firmware.bin
+
+      - uses: actions/upload-artifact@v7
+        with:
+          name: mangle-${{ matrix.env }}
+          path: mangle-${{ matrix.env }}.bin
+          if-no-files-found: error
+
   preprocessor:
     runs-on: ubuntu-latest
     steps:
@@ -96,7 +131,7 @@ jobs:
 
   release:
     if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')
-    needs: [test, kindle, preprocessor]
+    needs: [test, kindle, cyd, preprocessor]
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -114,7 +149,7 @@ jobs:
           SHA: ${{ github.sha }}
         run: |
           cd dist
-          sha256sum *.zip > SHA256SUMS
+          sha256sum *.zip *.bin > SHA256SUMS
           short=${SHA:0:7}
           cat > notes.md <<EOF
           Built from \`$short\` ($TAG).
@@ -127,7 +162,7 @@ jobs:
 
           Unzip the KUAL package into \`/mnt/us/extensions/\` on the Kindle.
           EOF
-          gh release create "$TAG" *.zip SHA256SUMS \
+          gh release create "$TAG" *.zip *.bin SHA256SUMS \
             --verify-tag \
             --title "Mangle $TAG ($short)" \
             --notes-file notes.md \

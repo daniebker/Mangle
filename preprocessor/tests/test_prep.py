@@ -138,3 +138,19 @@ def test_page_map_rects():
     assert 0 <= x < 20 and 0 <= y < 20
     x, y, w, h = m.rect((0, 0, 5000, 5000))               # clamped to the image
     assert (x, y) == (0, 0) and (w, h) == m.size
+
+
+def test_device_defaults(monkeypatch):
+    import prep
+
+    seen = []
+    monkeypatch.setattr(prep, "build", lambda src, out, cfg: seen.append(cfg))
+    prep.main(["in.cbz", "-o", "out.zip"])
+    prep.main(["in.cbz", "-o", "out.zip", "--device", "cyd"])
+    prep.main(["in.cbz", "-o", "out.zip", "--device", "cyd", "--screen", "320x480", "--dither", "--gamma", "1.5"])
+    prep.main(["in.cbz", "-o", "out.zip", "--no-dither"])
+    kindle, cyd, custom, plain = seen
+    assert (kindle.screen, kindle.opts.gamma, kindle.opts.dither) == ((1072, 1448), 1.8, True)
+    assert (cyd.screen, cyd.opts.gamma, cyd.opts.dither) == ((640, 960), 1.0, False)
+    assert (custom.screen, custom.opts.gamma, custom.opts.dither) == ((320, 480), 1.5, True)
+    assert plain.opts.dither is False

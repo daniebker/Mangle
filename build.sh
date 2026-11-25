@@ -5,7 +5,8 @@
 #   ./build.sh kindlepw2         Kindle build for older 5.x firmware (soft-float)
 #   ./build.sh custom --cross P  Kindle build with another toolchain (P = triplet, e.g. arm-linux-gnueabihf)
 #   ./build.sh sim               desktop simulator: reader/build/sim/mangle
-#   ./build.sh test              preprocessor + reader tests
+#   ./build.sh cyd [ENV]         Cheap Yellow Display firmware (PlatformIO; ENV cyd35r or cyd35c, default both)
+#   ./build.sh test              preprocessor + reader + CYD firmware tests
 #   ./build.sh toolchain [T]     install koxtoolchain target T (default kindlehf) into ~/x-tools
 #   ./build.sh clean             remove build output
 #
@@ -42,7 +43,7 @@ while [ $# -gt 0 ]; do
 		-h|--help) sed -n '2,/^set -eu/{/^#/p}' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
 		-*) die "unknown option $1" ;;
 		*)
-			if [ "$CMD" = toolchain ] && [ -z "$ARG" ] && [ "${SEEN_CMD:-}" = 1 ]; then ARG=$1
+			if { [ "$CMD" = toolchain ] || [ "$CMD" = cyd ]; } && [ -z "$ARG" ] && [ "${SEEN_CMD:-}" = 1 ]; then ARG=$1
 			else CMD=$1; SEEN_CMD=1; fi
 			shift ;;
 	esac
@@ -117,7 +118,18 @@ case "$CMD" in
 		say "Reader tests"
 		# sim_test.sh generates its sample book with $PYTHON.
 		PYTHON=$PYTHON make -C "$READER" -j"$JOBS" test
+		say "CYD firmware tests (desktop)"
+		PYTHON=$PYTHON make -C "$ROOT/cyd" -j"$JOBS" test
 		say "All tests passed"
+		;;
+	cyd)
+		need pio "install PlatformIO: pip install platformio"
+		envs=${ARG:-cyd35r cyd35c}
+		for e in $envs; do
+			say "Building CYD firmware ($e)"
+			(cd "$ROOT/cyd" && pio run -e "$e")
+		done
+		say "Done: cyd/.pio/build/<env>/firmware.bin (flash with: cd cyd && pio run -e <env> -t upload)"
 		;;
 	toolchain)
 		target=${ARG:-kindlehf}

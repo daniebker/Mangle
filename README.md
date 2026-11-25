@@ -1,14 +1,16 @@
 # Mangle
 
-Read manga panel by panel on a jailbroken Kindle.
+Read manga panel by panel on a jailbroken Kindle, or on a 3.5" ESP32 "Cheap Yellow Display".
 
-There are two parts:
+There are three parts:
 
 1. **Preprocessor** (`preprocessor/`, Python, runs on your computer). It takes a ZIP/CBZ of
    pages, finds the panels, prepares every image for e-ink, and writes a ZIP with a
    `manifest.json`.
 2. **Reader** (`reader/`, C, runs on the Kindle and is started from KUAL). It opens those ZIPs
    and shows them panel by panel or page by page.
+3. **CYD firmware** (`cyd/`, C, runs on an ESP32-3248S035 board). The same reader for the
+   3.5" Cheap Yellow Display, reading the same ZIPs from its SD card.
 
 All the heavy work (finding panels, resizing, dithering) happens on the computer. The Kindle
 only decodes small PNGs that are already the right size, so page turns stay fast.
@@ -23,13 +25,14 @@ python prep.py "My Manga v01.cbz" -o "My Manga v01.zip" --screen 1072x1448 --dir
 
 | Option | Default | |
 |---|---|---|
+| `--device kindle\|cyd` | `kindle` | Sets the defaults for `--screen`, `--gamma` and dithering (see the CYD section) |
 | `--screen WxH` | `1072x1448` | Portrait screen size of the target Kindle |
 | `--direction rtl\|ltr` | `rtl` | Reading direction (`ltr` for western comics) |
 | `--kumiko PATH` | `$KUMIKO`, the bundled submodule, or `kumiko` on PATH | Kumiko checkout or its `kumiko` script |
 | `--kumiko-python PATH` | the current Python | Python used to run Kumiko |
 | `--no-panels` | | Skip panel detection (page mode only) |
 | `--gamma G` | `1.8` | Darkens mid-tones for e-ink (`1` = off) |
-| `--no-dither` | | Reduce to 16 grays without dithering |
+| `--no-dither` / `--dither` | dither | Reduce to 16 grays without / with Floyd–Steinberg dithering |
 | `--pdf-dpi N` | `200` | Render resolution for PDF input |
 | `-j N` | CPU count | Worker processes |
 
@@ -231,6 +234,7 @@ marked as latest. It contains:
 
 - `mangle-kual-kindlehf.zip`: the KUAL extension for firmware 5.16.3 and newer
 - `mangle-kual-kindlepw2.zip`: the KUAL extension for older 5.x firmware
+- `mangle-cyd35r.bin` / `mangle-cyd35c.bin`: Cheap Yellow Display firmware (see below)
 - `mangle-preprocessor.zip`: `prep.py`, `preview.py` and their requirements
 - `SHA256SUMS`
 
@@ -274,6 +278,95 @@ Simulator commands are `tap X Y`, `long X Y`, `drag X Y DX DY`, `pinch X Y SCALE
 comes from `MANGLE_SIM_SCREEN=WxH`.
 
 Preprocessor tests: `cd preprocessor && python -m pytest tests`.
+
+## 3. Cheap Yellow Display firmware
+
+`cyd/` is the reader as firmware for the **ESP32-3248S035**, the 3.5" Cheap Yellow Display
+(ST7796 320x480 LCD, SD card slot). Both versions of the board work: `R` (resistive touch,
+XPT2046) and `C` (capacitive touch, GT911).
+
+### Making books for it
+
+```sh
+python prep.py "My Manga v01.cbz" -o "My Manga v01.zip" --device cyd
+```
+
+`--device cyd` stores pages at 640x960 with no e-ink gamma and no dithering, which suits an LCD.
+The reader shrinks whole pages to fit and uses the extra detail when it shows a panel or zooms.
+For the fastest page turns, use `--device cyd --screen 320x480`. Books made for a Kindle also
+open, but they draw more slowly.
+
+Copy the ZIPs to a FAT32 microSD card in a folder called `manga`, and put the card in the board.
+
+### Flashing
+
+Each release has `mangle-cyd35r.bin` (resistive) and `mangle-cyd35c.bin` (capacitive). Each is a
+complete image: write it at offset `0x0`, for example with
+[ESP Web Tools](https://espressif.github.io/esptool-js/) in Chrome, or with esptool:
+
+```sh
+esptool.py --chip esp32 write_flash 0x0 mangle-cyd35r.bin
+```
+
+To build it yourself, install [PlatformIO](https://platformio.org/) (`pip install platformio`):
+
+```sh
+cd cyd
+pio run -e cyd35r -t upload      # resistive board (cyd35c for capacitive)
+pio device monitor               # log at 115200 baud
+```
+
+or `./build.sh cyd` from the repository root. Pins and options are in `cyd/src/board/board.h`.
+
+### Using it
+
+- At power-on it opens the book you were reading. Otherwise it shows the library, two covers
+  per row, with the title and how far you've read. Tap a cover to open it. Tap or swipe the
+  bottom strip to change shelf page, and tap `Settings` at the top right.
+- Reading works like on the Kindle: tap the left or right third to turn, tap the centre to go
+  forward, double-tap the centre to switch between panel and page mode, hold the centre to go
+  back to the library, and tap the top edge for the menu bar (`< Library`, `Settings`, page
+  number).
+- You can also **swipe** to turn the page (in RTL books, swipe right to go forward).
+- **Zoom**: hold a side of the screen to zoom 2x around your finger, hold again for 3x, and a
+  third time to go back to the fitted view. Drag to pan while zoomed. On the capacitive board,
+  pinch zooms too.
+- **Settings**: page preview in panel mode, sleep after 2/5/10/30 minutes (screen off; touch to
+  wake), brightness, rotation (0/90/180/270), night mode (inverted grays), `Invert panel` (use
+  this if everything looks like a negative, because some batches of the display need it), and
+  `Calibrate touch` on the resistive board.
+- The resistive board asks for touch calibration on first start (press three crosses). Hold the
+  screen while powering on to calibrate again.
+- Positions, settings and cover thumbnails are kept in `manga/.mangle/` on the card, one
+  `.pos` file per book as on the Kindle.
+
+There are no reading statistics on the CYD, because the board has no clock.
+
+### How it fits in 520 KB of RAM
+
+The board has no PSRAM, so a page is never decoded whole. `cyd/src/pngs.c` decodes a PNG one
+row at a time straight from the ZIP on the SD card. `cyd/src/render.c` scales each row on the
+way: it averages areas when shrinking, uses bilinear sampling when enlarging, and only draws
+the part of the page that is visible. It stops decoding once the panel's last row is drawn.
+The manifest is parsed while it is being read (`cyd/src/cbook.c`) instead of being built as a
+JSON tree. A page turn needs about 60 KB of memory.
+
+Navigation, gestures, zoom and the font come from the Kindle reader's source files
+(`reader/src/nav.c`, `gesture.c`, `zoom.c` and `font.c`), so both readers behave the same.
+
+### Testing on the desktop
+
+All of the firmware except `cyd/src/board/` also builds against a simulated screen:
+
+```sh
+cd cyd
+make test        # unit tests (ASan/UBSan) + end-to-end simulator test
+printf 'tap 80 150\ntap 10 300\nquit\n' | MANGLE_SIM_LIBRARY=~/manga MANGLE_SIM_DIR=/tmp/frames ./build/cydsim
+```
+
+The simulator takes the same commands as the Kindle one (`tap`, `long`, `drag`, `pinch`,
+`sleep`, `quit`) and writes each screen as a PGM file. The unit tests check the PNG decoder
+against stb_image for every colour type and bit depth.
 
 ## Status and open questions
 
