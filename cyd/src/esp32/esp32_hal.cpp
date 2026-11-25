@@ -24,6 +24,13 @@ extern "C" {
 #define SLEEP_BUTTON 0
 #endif
 
+#ifndef MANGLE_GIT
+#define MANGLE_GIT "unknown"
+#endif
+#ifndef MANGLE_BOARD
+#define MANGLE_BOARD "?"
+#endif
+
 static Tin tin;
 static int bl_pct = 80;
 
@@ -32,21 +39,34 @@ static bool button_down(void)
 	return digitalRead(SLEEP_BUTTON) == LOW;
 }
 
-// A press of the button (it was up, now it has been down for two looks).
+// Presses are caught by an interrupt, so one during a page draw isn't lost.
+static volatile bool     button_flag;
+static volatile uint32_t button_last;
+
+static void IRAM_ATTR button_isr(void)
+{
+	uint32_t now = millis();
+	if (now - button_last > 250) {    // contact bounce
+		button_flag = true;
+		button_last = now;
+	}
+}
+
+static void button_listen(bool on)
+{
+	if (on)
+		attachInterrupt(digitalPinToInterrupt(SLEEP_BUTTON), button_isr, FALLING);
+	else
+		detachInterrupt(digitalPinToInterrupt(SLEEP_BUTTON));
+}
+
 static bool button_pressed(void)
 {
-	static int  down_for;
-	static bool armed = true;    // released since the last press
-	if (!button_down()) {
-		down_for = 0;
-		armed    = true;
+	if (!button_flag)
 		return false;
-	}
-	if (armed && ++down_for >= 2) {
-		armed = false;
-		return true;
-	}
-	return false;
+	button_flag = false;
+	hal_log("BOOT button pressed\n");
+	return true;
 }
 
 static void button_wait_release(void)
@@ -120,6 +140,9 @@ int hal_wait(InEvent* ev, int timeout_ms)
 // after the button sent it to sleep.
 bool hal_sleep(bool by_button)
 {
+	// The wake-up below uses the button's low level; with the edge interrupt
+	// still attached that would fire over and over while it is held.
+	button_listen(false);
 	button_wait_release();    // the button is low while pressed: don't wake at once
 	backlight_raw(0);
 	board_display_sleep(true);
@@ -137,6 +160,7 @@ bool hal_sleep(bool by_button)
 	}
 	gpio_wakeup_disable((gpio_num_t) SLEEP_BUTTON);
 	board_sleep_prepare(false);
+	hal_log("awake\n");
 	// Swallow what woke it.
 	button_wait_release();
 	while (board_touch(p) > 0)
@@ -144,6 +168,8 @@ bool hal_sleep(bool by_button)
 	tin_init(&tin, TAP_PX);
 	board_display_sleep(false);
 	backlight_raw(bl_pct);
+	button_flag = false;
+	button_listen(true);
 	return true;
 }
 
@@ -222,7 +248,9 @@ static void clock_sync(void)
 
 void esp32_init(void)
 {
+	hal_log("Mangle %s on %s\n", MANGLE_GIT, MANGLE_BOARD);
 	pinMode(SLEEP_BUTTON, INPUT_PULLUP);
+	button_listen(true);
 	backlight_init();
 	board_init();
 	tin_init(&tin, TAP_PX);
