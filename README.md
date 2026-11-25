@@ -391,6 +391,9 @@ The controls, settings, library and statistics are the Reader section's. Specifi
   screen while powering on to calibrate again. It can't pinch: hold a side to zoom.
 - `Invert panel` in the settings fixes displays that come up as a negative.
 - On the Freenove board, rotation is done in software (its panel can only flip 180 degrees).
+- **BOOT button**: press it to sleep at once (the book's cover is shown, the screen goes off);
+  press it again to wake. A touch doesn't wake it then, so it can't wake in a bag. Sleep after
+  the idle time still wakes on a touch, or on BOOT.
 - Positions, settings, statistics and cover thumbnails are kept in `manga/.mangle/` on the card.
 - **Clock for reading statistics**: put a `wifi.txt` in `manga/.mangle/` with the network name
   on the first line, the password on the second, and optionally your time zone in POSIX form on

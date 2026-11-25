@@ -250,7 +250,10 @@ void board_display_sleep(bool sleep)
 		delay(120);
 }
 
-void board_sleep_prepare(void) {}
+void board_sleep_prepare(bool touch_wakes)
+{
+	(void) touch_wakes;    // touch is polled by I2C after the timer wakes the chip
+}
 
 bool board_sd_mount(void)
 {

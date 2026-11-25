@@ -1,9 +1,10 @@
 // The parts of the HAL that every ESP32 board shares: backlight (PWM), the
-// input loop (polled touch -> gestures), light sleep, the clock (set over
+// input loop (polled touch -> gestures), the BOOT button and light sleep, the clock (set over
 // Wi-Fi at power-on), logging and start-up. The board itself (display, touch
 // controller, SD card) is in cyd/src/boards/<name>/.
 #include <Arduino.h>
 #include <WiFi.h>
+#include <driver/gpio.h>
 #include <esp_sleep.h>
 #include <stdarg.h>
 #include <stdio.h>
@@ -18,8 +19,43 @@ extern "C" {
 #include "ui.h"
 }
 
+// The BOOT button (GPIO0 on both the ESP32 and the ESP32-S3): sleep and wake.
+#ifndef SLEEP_BUTTON
+#define SLEEP_BUTTON 0
+#endif
+
 static Tin tin;
 static int bl_pct = 80;
+
+static bool button_down(void)
+{
+	return digitalRead(SLEEP_BUTTON) == LOW;
+}
+
+// A press of the button (it was up, now it has been down for two looks).
+static bool button_pressed(void)
+{
+	static int  down_for;
+	static bool armed = true;    // released since the last press
+	if (!button_down()) {
+		down_for = 0;
+		armed    = true;
+		return false;
+	}
+	if (armed && ++down_for >= 2) {
+		armed = false;
+		return true;
+	}
+	return false;
+}
+
+static void button_wait_release(void)
+{
+	for (int up = 0; up < 3;) {    // a few clean looks: no bounce
+		up = button_down() ? 0 : up + 1;
+		delay(10);
+	}
+}
 
 // ---- backlight ---------------------------------------------------------------------------
 
@@ -61,6 +97,12 @@ int hal_wait(InEvent* ev, int timeout_ms)
 {
 	int64_t end = timeout_ms >= 0 ? hal_ms() + timeout_ms : 0;
 	for (;;) {
+		if (button_pressed()) {
+			tin_init(&tin, TAP_PX);    // forget a touch that was going on
+			*ev = InEvent{};
+			ev->kind = IN_SLEEP;
+			return 1;
+		}
 		TPoint p[2];
 		int    n = board_touch(p);
 		if (tin_feed(&tin, n, p, hal_ms(), ev))
@@ -73,20 +115,30 @@ int hal_wait(InEvent* ev, int timeout_ms)
 
 // ---- sleep -----------------------------------------------------------------------------------
 
-bool hal_sleep(void)
+// Light sleep with the screen and backlight off. The BOOT button always
+// wakes it; after idle sleep a touch does too (polled every 150 ms), but not
+// after the button sent it to sleep.
+bool hal_sleep(bool by_button)
 {
+	button_wait_release();    // the button is low while pressed: don't wake at once
 	backlight_raw(0);
 	board_display_sleep(true);
+	TPoint p[2];
 	for (;;) {
-		TPoint p[2];
-		board_sleep_prepare();
-		esp_sleep_enable_timer_wakeup(150 * 1000);
+		gpio_wakeup_enable((gpio_num_t) SLEEP_BUTTON, GPIO_INTR_LOW_LEVEL);
+		esp_sleep_enable_gpio_wakeup();
+		board_sleep_prepare(!by_button);
+		if (!by_button)
+			esp_sleep_enable_timer_wakeup(150 * 1000);
 		esp_light_sleep_start();
-		if (board_touch(p) > 0)
+		esp_sleep_disable_wakeup_source(ESP_SLEEP_WAKEUP_TIMER);
+		if (button_down() || (!by_button && board_touch(p) > 0))
 			break;
 	}
-	// Swallow the waking touch.
-	TPoint p[2];
+	gpio_wakeup_disable((gpio_num_t) SLEEP_BUTTON);
+	board_sleep_prepare(false);
+	// Swallow what woke it.
+	button_wait_release();
 	while (board_touch(p) > 0)
 		delay(20);
 	tin_init(&tin, TAP_PX);
@@ -170,6 +222,7 @@ static void clock_sync(void)
 
 void esp32_init(void)
 {
+	pinMode(SLEEP_BUTTON, INPUT_PULLUP);
 	backlight_init();
 	board_init();
 	tin_init(&tin, TAP_PX);

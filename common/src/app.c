@@ -83,6 +83,21 @@ typedef void (*SleepHook)(void* ctx);
 // Wait for an event, sleeping after the idle time. Returns 1 with an event,
 // 0 on timeout (only when timeout_ms >= 0), and 2 after waking from sleep (the
 // screen must be redrawn).
+// Sleep now: the hook first (e.g. the cover on screen), then the device.
+static void go_to_sleep(SleepHook hook, void* hctx, bool by_button)
+{
+	hal_log("sleep%s\n", by_button ? " (button)" : "");
+	if (hook)
+		hook(hctx);
+	if (!hal_sleep(by_button)) {
+		// Can't sleep here: wait for any input instead.
+		InEvent ev;
+		while (!quit && hal_wait(&ev, -1) != 1) {}
+		if (ev.kind == IN_QUIT)
+			quit = true;
+	}
+}
+
 static int wait_event(InEvent* ev, int timeout_ms, SleepHook hook, void* hctx)
 {
 	int64_t start = hal_ms();
@@ -95,21 +110,17 @@ static int wait_event(InEvent* ev, int timeout_ms, SleepHook hook, void* hctx)
 				wait = l;
 		}
 		int rc = hal_wait(ev, wait);
+		if (rc == 1 && ev->kind == IN_SLEEP) {
+			go_to_sleep(hook, hctx, true);
+			return 2;
+		}
 		if (rc == 1) {
 			if (ev->kind == IN_QUIT)
 				quit = true;
 			return 1;
 		}
 		if (idle >= 0 && hal_ms() - start >= idle) {
-			hal_log("sleep\n");
-			if (hook)
-				hook(hctx);
-			if (!hal_sleep()) {
-				// Can't sleep here: wait for any input instead.
-				while (!quit && hal_wait(ev, -1) != 1) {}
-				if (ev->kind == IN_QUIT)
-					quit = true;
-			}
+			go_to_sleep(hook, hctx, false);
 			return 2;
 		}
 		if (timeout_ms >= 0 && hal_ms() - start >= timeout_ms)

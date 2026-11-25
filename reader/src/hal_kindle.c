@@ -382,8 +382,9 @@ bool hal_clock_ok(void)
 	return time(NULL) > 1577836800;    // after 2020: the Kindle keeps its clock
 }
 
-bool hal_sleep(void)
+bool hal_sleep(bool by_button)
 {
+	(void) by_button;    // the Kindle's power button wakes it either way
 	// Let the e-ink panel finish its last refresh before the CPU stops.
 	sleep(2);
 	sync();

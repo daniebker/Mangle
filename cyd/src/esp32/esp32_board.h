@@ -27,8 +27,9 @@ void board_init(void);
 int board_touch(TPoint* pts);
 // Display sleep (keeps the picture in its memory) and wake.
 void board_display_sleep(bool sleep);
-// Extra wake-up sources before light sleep (the timer is always set).
-void board_sleep_prepare(void);
+// Before light sleep: set up (touch_wakes) or remove the board's own touch
+// wake-up source. The BOOT button and a polling timer are set up by esp32_hal.
+void board_sleep_prepare(bool touch_wakes);
 // Mount the SD card at /sd. board_sd_end undoes a failed attempt.
 bool     board_sd_mount(void);
 void     board_sd_end(void);

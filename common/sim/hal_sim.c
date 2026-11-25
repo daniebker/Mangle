@@ -9,6 +9,7 @@
 // stdout gets one line per screen: "FRAME n full|partial path", plus SCREEN,
 // SUSPEND, BACKLIGHT. Input, one command per line:
 //   tap X Y | long X Y | drag X Y DX DY | pinch X Y SCALE [DX DY] | key CODE
+//   button (the ESP32 boards' BOOT button: sleep)
 //   sleep MS (pause; lets timeouts fire) | quit (EOF also quits)
 #include <errno.h>
 #include <poll.h>
@@ -126,9 +127,9 @@ bool hal_clock_ok(void)
 	return !getenv("MANGLE_SIM_NOCLOCK");
 }
 
-bool hal_sleep(void)
+bool hal_sleep(bool by_button)
 {
-	printf("SUSPEND\n");
+	printf("SUSPEND%s\n", by_button ? " button" : "");
 	fflush(stdout);
 	return true;
 }
@@ -180,6 +181,10 @@ int hal_wait(InEvent* ev, int timeout_ms)
 			int np = sscanf(line, "pinch %d %d %f %d %d", &a, &b, &f, &c, &d);
 			if ((np == 3 || np == 5) && multitouch) {
 				*ev = (InEvent){ IN_PINCH, a, b, 0, np == 5 ? c : 0, np == 5 ? d : 0, f };
+				return 1;
+			}
+			if (strncmp(line, "button", 6) == 0 && cyd) {
+				*ev = (InEvent){ .kind = IN_SLEEP };
 				return 1;
 			}
 			if (sscanf(line, "key %d", &a) == 1) {

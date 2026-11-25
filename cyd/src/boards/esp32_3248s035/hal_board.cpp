@@ -366,7 +366,10 @@ bool hal_needs_calibration(void)
 
 void hal_calibrate(void) {}
 
-static void touch_sleep_prepare(void) {}
+static void touch_sleep_prepare(bool touch_wakes)
+{
+	(void) touch_wakes;    // the GT911 is polled by I2C after the timer wakes the chip
+}
 
 #else    // XPT2046
 
@@ -537,11 +540,15 @@ void hal_calibrate(void)
 		hal_calibrate();
 }
 
-static void touch_sleep_prepare(void)
+static void touch_sleep_prepare(bool touch_wakes)
 {
-	// The pen IRQ line goes low on a touch: wake on it as well as on the timer.
-	gpio_wakeup_enable((gpio_num_t) XPT_IRQ, GPIO_INTR_LOW_LEVEL);
-	esp_sleep_enable_gpio_wakeup();
+	// The pen IRQ line goes low on a touch: a wake-up source after idle sleep.
+	if (touch_wakes) {
+		gpio_wakeup_enable((gpio_num_t) XPT_IRQ, GPIO_INTR_LOW_LEVEL);
+		esp_sleep_enable_gpio_wakeup();
+	} else {
+		gpio_wakeup_disable((gpio_num_t) XPT_IRQ);
+	}
 }
 
 #endif
@@ -567,9 +574,9 @@ void board_display_sleep(bool sleep)
 		delay(120);
 }
 
-void board_sleep_prepare(void)
+void board_sleep_prepare(bool touch_wakes)
 {
-	touch_sleep_prepare();
+	touch_sleep_prepare(touch_wakes);
 }
 
 bool board_sd_mount(void)

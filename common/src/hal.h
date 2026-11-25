@@ -65,8 +65,10 @@ void hal_calibrate(void);
 
 // Sleep with what's on screen left showing (e-ink) or the screen off (LCD),
 // until the user wakes the device. The waking input is swallowed.
+// by_button: the sleep button sent the device to sleep, so only that button
+// wakes it (a touch in a bag shouldn't); otherwise (idle) a touch wakes it too.
 // Returns false if the device can't sleep (the app then waits for input).
-bool hal_sleep(void);
+bool hal_sleep(bool by_button);
 
 // There is somewhere to exit to (the Kindle's KUAL menu); the CYD has not.
 bool hal_can_exit(void);

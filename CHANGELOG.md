@@ -8,6 +8,7 @@
 - The Kindle draws pages with the CYD's decoder and scaler (area averaging when shrinking, bilinear when enlarging); stb_image and cJSON are no longer used. The desktop simulator and all app tests are in `common/` and run as both devices.
 
 ### Added
+- ESP32 boards: the BOOT button sends the device to sleep at once and wakes it again; while asleep that way, touches don't wake it.
 - Firmware for the Freenove ESP32-S3 Display 3.5" (FNK0104N): ST77922 panel on QSPI, capacitive touch, SDMMC card slot. With its PSRAM it decodes pages ahead like the Kindle, and rotates in software. The panel's init sequence is fetched from Freenove at build time. In the web flasher and in releases as `mangle-freenove35.bin`.
 - Firmware for the 3.5" Cheap Yellow Display (ESP32-3248S035, resistive `R` and capacitive `C` boards) in `cyd/`. It reads the same book ZIPs from an SD card: a library of covers, panel and page mode, tap and swipe to turn, zoom by holding a side (or pinching on the capacitive board), a menu bar, settings (rotation, brightness, sleep, night mode), and resume at power-on. Pages are decoded and scaled row by row, so the board needs no PSRAM. Navigation, gestures and zoom use the Kindle reader's code.
 - Desktop simulator and tests for the firmware (`make -C cyd test`, part of `./build.sh test`). `./build.sh cyd` builds the firmware with PlatformIO, and releases include flashable `mangle-cyd35r.bin` and `mangle-cyd35c.bin` images.

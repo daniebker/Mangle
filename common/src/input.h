@@ -4,7 +4,9 @@
 #include <stdbool.h>
 #include <stdint.h>
 
-typedef enum { IN_TAP, IN_LONG, IN_KEY, IN_QUIT, IN_DRAG, IN_PINCH } InKind;
+// IN_SLEEP: the device's sleep button was pressed (the BOOT button on the
+// ESP32 boards; the Kindle's power button is handled by the Kindle itself).
+typedef enum { IN_TAP, IN_LONG, IN_KEY, IN_QUIT, IN_DRAG, IN_PINCH, IN_SLEEP } InKind;
 
 typedef struct {
 	InKind kind;

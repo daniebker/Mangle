@@ -93,6 +93,16 @@ grep -q 'zoom=2.00' "$TMP/err" || fail "no pinch zoom on the capacitive board"
 printf '%s\n' 'tap 80 150' 'pinch 160 240 2' 'quit' | MANGLE_SIM_DEVICE=freenove35 $BIN -v -l "$TMP/lib" -s "$TMP/state6" >"$TMP/out" 2>"$TMP/err"
 grep -q 'zoom=2.00' "$TMP/err" && grep -q '^SCREEN 320x480 freenove35' "$TMP/out" || fail "freenove35 profile"
 
+# The BOOT button: sleep now (cover on screen, only the button wakes it),
+# then the page is drawn again.
+printf '%s\n' 'tap 80 150' 'button' 'quit' | $BIN -v -l "$TMP/lib" -s "$TMP/state7" >"$TMP/out" 2>"$TMP/err" || fail "exited with an error"
+grep -q '^SUSPEND button' "$TMP/out" || fail "BOOT button did not sleep"
+grep -q 'mangle: sleep (button)' "$TMP/err" || fail "no sleep log for the button"
+[ "$(grep -c 'mangle: show' "$TMP/err")" = 2 ] || fail "page not redrawn after waking"
+# In the library it sleeps too (no book: no cover).
+printf '%s\n' 'button' 'quit' | $BIN -l "$TMP/lib" -s "$TMP/state7" >"$TMP/out" 2>"$TMP/err"
+grep -q '^SUSPEND button' "$TMP/out" || fail "BOOT button did not sleep in the library"
+
 # A broken book shows a message instead of crashing.
 printf 'not a zip' >"$TMP/lib/0broken.zip"
 printf '%s\n' 'tap 80 150' 'tap 100 100' 'quit' | $BIN -l "$TMP/lib" -s "$TMP/state5" >"$TMP/out" 2>"$TMP/err" || fail "exited with an error"
