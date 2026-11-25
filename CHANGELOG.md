@@ -1,5 +1,11 @@
 # Changelog
 
+## v0.7.0
+
+### Added
+- Reading statistics: each session (start and end time, pages read, book) is logged to `state/stats.log`. Idle time and sleep aren't counted.
+- Stats screen, from the library's `[stats]` entry or the menu bar's `Stats` entry. Daily: today, this week, streaks, the last 14 days, time of day and day of week. Monthly: a calendar shaded by reading time and the month's totals, with previous/next month.
+
 ## v0.6.0
 
 ### Added

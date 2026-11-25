@@ -105,4 +105,20 @@ grep -q 'show p002.png page=1 panel=0 mode=panel' "$TMP/err" || fail "preview sh
 mkdir -p "$TMP/state_pv4"; cp "$TMP/state_pv/settings" "$TMP/state_pv4/settings"
 printf 'tap 10 400\nquit\n' | $BIN -v -s "$TMP/state_pv4" "$ZIP" >/dev/null 2>"$TMP/err"
 grep -q 'panel=-1' "$TMP/err" && fail "saved preview-off setting ignored"
+# Stats: a session is logged when the book closes (pages seen, start/end times).
+printf 'tap 10 400\nsleep 11000\ntap 10 400\nquit\n' | $BIN -v -s "$TMP/state_stats" "$ZIP" >/dev/null 2>"$TMP/err"
+[ -f "$TMP/state_stats/stats.log" ] || fail "no stats log"
+awk '{ if (NF < 4 || $2 - $1 < 10 || $3 != 2) exit 1 }' "$TMP/state_stats/stats.log" || fail "bad stats line: $(cat "$TMP/state_stats/stats.log")"
+[ "$(awk '{print $4}' "$TMP/state_stats/stats.log")" = "$(basename "$ZIP")" ] || fail "stats book name"
+# Quick open-and-close is not a session.
+echo quit | $BIN -s "$TMP/state_stats" "$ZIP" >/dev/null 2>&1
+[ "$(wc -l <"$TMP/state_stats/stats.log")" = 1 ] || fail "short session logged"
+# Menu -> Stats (daily), Monthly tab, Back returns to the page.
+printf 'tap 300 5\ntap 450 5\ntap 550 20\ntap 10 20\nquit\n' | MANGLE_SIM_DIR="$TMP" $BIN -v -s "$TMP/state_stats" "$ZIP" >"$TMP/out" 2>"$TMP/err"
+[ "$(grep -c '^FRAME' "$TMP/out")" = 5 ] || fail "stats screens from the menu"
+[ "$(grep -c 'mangle: show' "$TMP/err")" = 2 ] || fail "page not shown again after stats"
+python3 -c "import sys;d=open(sys.argv[1],'rb').read()[15:];sys.exit(sum(b<128 for b in d)<5000)" "$TMP/frame_0003.pgm" || fail "daily stats frame is blank"
+# Library header: [stats] opens the stats screen (not exit), Back returns to the shelf.
+printf 'tap 150 10\ntap 10 20\ntap 300 10\n' | $BIN -l "$TMP/lib" -s "$TMP/state_stats" >"$TMP/out" 2>"$TMP/err"
+[ "$(grep -c '^FRAME' "$TMP/out")" = 3 ] || fail "stats from the library"
 echo "sim tests passed"
