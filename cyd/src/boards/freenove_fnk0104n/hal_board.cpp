@@ -255,10 +255,26 @@ void board_sleep_prepare(bool touch_wakes)
 	(void) touch_wakes;    // touch is polled by I2C after the timer wakes the chip
 }
 
+// 4-bit at 20 MHz first; if the card doesn't answer, 1-bit, then 1-bit slowly
+// (marginal cards and contacts).
 bool board_sd_mount(void)
 {
-	SD_MMC.setPins(SD_CLK, SD_CMD, SD_D0, SD_D1, SD_D2, SD_D3);
-	return SD_MMC.begin("/sd", false);
+	static const struct {
+		bool one_bit;
+		int  khz;
+	} tries[] = { { false, 20000 }, { true, 20000 }, { true, 4000 } };
+	for (size_t i = 0; i < sizeof(tries) / sizeof(*tries); i++) {
+		if (tries[i].one_bit)
+			SD_MMC.setPins(SD_CLK, SD_CMD, SD_D0);
+		else
+			SD_MMC.setPins(SD_CLK, SD_CMD, SD_D0, SD_D1, SD_D2, SD_D3);
+		if (SD_MMC.begin("/sd", tries[i].one_bit, false, tries[i].khz)) {
+			hal_log("SD card: %s, %d kHz\n", tries[i].one_bit ? "1-bit" : "4-bit", tries[i].khz);
+			return true;
+		}
+		SD_MMC.end();
+	}
+	return false;
 }
 
 void board_sd_end(void)

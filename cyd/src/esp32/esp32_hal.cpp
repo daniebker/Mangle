@@ -257,11 +257,24 @@ void esp32_init(void)
 	hal_backlight(bl_pct);
 	hal_log("free heap %u, largest block %u, PSRAM %u\n", (unsigned) ESP.getFreeHeap(),
 		(unsigned) ESP.getMaxAllocHeap(), (unsigned) ESP.getPsramSize());
-	while (!board_sd_mount()) {
-		const char* lines[] = { "No SD card", "", "Insert a FAT32 card with your books in /manga" };
-		show_message(lines, 3);
+	for (bool shown = false; !board_sd_mount();) {
+		if (!shown) {
+			const char* lines[] = { "No SD card", "",
+						"Insert a microSD card (FAT32, up to 32 GB) with your books in a folder called manga.",
+						"", "Checking again every few seconds." };
+			show_message(lines, 5);
+			shown = true;
+		}
 		board_sd_end();
-		delay(2000);
+		// The BOOT button works here too: sleep until it is pressed again.
+		for (int i = 0; i < 200; i++) {
+			if (button_pressed()) {
+				hal_sleep(true);
+				shown = false;
+				break;
+			}
+			delay(10);
+		}
 	}
 	mkdir(LIBRARY_DIR, 0755);
 	mkdir(STATE_DIR, 0755);
