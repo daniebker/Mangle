@@ -1,5 +1,10 @@
 # Changelog
 
+## Unreleased
+
+### Added
+- Front light brightness in Settings: `-`/`+` buttons and a bar to tap to a level. Uses the Kindle's power daemon (so the level sticks after exiting and sleep), or `/sys/class/backlight` if `lipc` is missing. `MANGLE_LIGHT_MAX` overrides the highest level.
+
 ## v0.8.0
 
 ### Added

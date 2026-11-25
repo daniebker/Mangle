@@ -16,6 +16,7 @@
 #include "gesture.h"
 #include "input.h"
 #include "library.h"
+#include "light.h"
 #include "nav.h"
 #include "settings.h"
 #include "state.h"
@@ -62,6 +63,7 @@ typedef struct {
 	bool        library;    // started with a library folder
 	Settings    settings;
 	int         idle_ms;    // inactivity before the sleep screen
+	int         light_max;  // highest front light level, 0 = no front light
 } App;
 
 static void message(const char* a, const char* b)
@@ -144,6 +146,44 @@ static int ui_scale(const Screen* s)
 	return s->width >= 900 ? 3 : 2;
 }
 
+// Draw an outlined box.
+static void draw_box(uint8_t* f, const Screen* s, int x0, int y0, int x1, int y1, int t)
+{
+	for (int y = y0; y < y1 && y < s->height; y++) {
+		if (y < 0)
+			continue;
+		uint8_t* row = f + (size_t) y * s->width;
+		if (y < y0 + t || y >= y1 - t) {
+			for (int x = x0 < 0 ? 0 : x0; x < x1 && x < s->width; x++)
+				row[x] = 0;
+		} else {
+			for (int x = x0 < 0 ? 0 : x0; x < x0 + t && x < s->width; x++)
+				row[x] = 0;
+			for (int x = x1 - t < 0 ? 0 : x1 - t; x < x1 && x < s->width; x++)
+				row[x] = 0;
+		}
+	}
+}
+
+// Set the front light, keeping *level in step. Returns true if it changed.
+static bool change_light(App* app, int* level, int want)
+{
+	if (want < 0)
+		want = 0;
+	if (want > app->light_max)
+		want = app->light_max;
+	if (want == *level)
+		return false;
+	if (light_set(want) != 0) {
+		fprintf(stderr, "mangle: cannot set the front light to %d\n", want);
+		return false;
+	}
+	if (app->verbose)
+		fprintf(stderr, "mangle: light %d\n", want);
+	*level = want;
+	return true;
+}
+
 // Settings screen. Returns true if the program should quit.
 static bool settings_screen(Reader* r, Pos* pos)
 {
@@ -153,6 +193,16 @@ static bool settings_screen(Reader* r, Pos* pos)
 	int           row_h = FONT_H * scale + 2 * scale * 8;
 	uint8_t*      f     = r->frame;
 	int           pad   = scale * 8;
+	// Front light: a row with the level and [-] [+] buttons, then a bar
+	// that sets the level where it's tapped.
+	int  light  = app->light_max > 0 ? light_get() : -1;
+	int  btn_w  = row_h * 3 / 2;
+	int  plus_x = s->width - pad - btn_w;
+	int  minus_x = plus_x - pad - btn_w;
+	int  bar_x0 = pad, bar_x1 = s->width - pad;
+	bool flash  = true;
+	if (light > app->light_max)
+		light = app->light_max;
 
 	for (;;) {
 		fill_rows(f, s, 0, s->height, 255);
@@ -166,7 +216,32 @@ static bool settings_screen(Reader* r, Pos* pos)
 		snprintf(line, sizeof(line), "Panel mode page preview: %s", app->settings.overview ? "ON" : "OFF");
 		font_draw(f, s->width, s->height, pad, 2 * row_h + scale * 8, scale, line, 0);
 		fill_rows(f, s, 3 * row_h - 1, 3 * row_h, 128);
-		display_frame(f, true);
+		if (app->light_max <= 0) {
+			font_draw(f, s->width, s->height, pad, 3 * row_h + scale * 8, scale, "Front light: not available", 0);
+			fill_rows(f, s, 4 * row_h - 1, 4 * row_h, 128);
+		} else {
+			if (light >= 0)
+				snprintf(line, sizeof(line), "Front light: %d/%d", light, app->light_max);
+			else
+				snprintf(line, sizeof(line), "Front light: ?");
+			font_draw(f, s->width, s->height, pad, 3 * row_h + scale * 8, scale, line, 0);
+			int by0 = 3 * row_h + scale * 3, by1 = 4 * row_h - scale * 3, ty = 3 * row_h + scale * 8;
+			draw_box(f, s, minus_x, by0, minus_x + btn_w, by1, scale);
+			draw_box(f, s, plus_x, by0, plus_x + btn_w, by1, scale);
+			font_draw(f, s->width, s->height, minus_x + (btn_w - FONT_W * scale) / 2, ty, scale, "-", 0);
+			font_draw(f, s->width, s->height, plus_x + (btn_w - FONT_W * scale) / 2, ty, scale, "+", 0);
+			// Level bar: outline, filled up to the current level.
+			int y0 = 4 * row_h + row_h / 4, y1 = 5 * row_h - row_h / 4;
+			draw_box(f, s, bar_x0, y0, bar_x1, y1, scale);
+			if (light > 0) {
+				int fill = bar_x0 + (int) ((int64_t) (bar_x1 - bar_x0) * light / app->light_max);
+				for (int y = y0; y < y1; y++)
+					memset(f + (size_t) y * s->width + bar_x0, 0, (size_t) (fill - bar_x0));
+			}
+			fill_rows(f, s, 5 * row_h - 1, 5 * row_h, 128);
+		}
+		display_frame(f, flash);
+		flash = true;
 
 		for (;;) {
 			InEvent ev;
@@ -200,6 +275,27 @@ static bool settings_screen(Reader* r, Pos* pos)
 				if (settings_save(app->state_dir, &app->settings) != 0)
 					fprintf(stderr, "mangle: cannot save settings: %s\n", strerror(errno));
 				break;
+			}
+			if (app->light_max <= 0)
+				continue;
+			// Light changes redraw with a fast partial refresh.
+			int cur = light < 0 ? 0 : light;
+			if (ev.y < 4 * row_h) {
+				int want = ev.x >= plus_x ? cur + 1 : ev.x >= minus_x ? cur - 1 : cur;
+				if (change_light(app, &light, want)) {
+					flash = false;
+					break;
+				}
+				continue;
+			}
+			if (ev.y < 5 * row_h && ev.x >= bar_x0 - pad && ev.x < bar_x1 + pad) {
+				int x    = ev.x < bar_x0 ? bar_x0 : ev.x > bar_x1 ? bar_x1 : ev.x;
+				int want = (int) (((int64_t) (x - bar_x0) * app->light_max * 2 + (bar_x1 - bar_x0)) /
+						  (2 * (bar_x1 - bar_x0)));
+				if (change_light(app, &light, want)) {
+					flash = false;
+					break;
+				}
 			}
 		}
 	}
@@ -507,6 +603,7 @@ int main(int argc, char** argv)
 	nav_set_overview(app.settings.overview);
 	if (display_open(&app.scr) != 0)
 		return 1;
+	app.light_max = light_open();
 	if (input_open(app.scr.width, app.scr.height) != 0) {
 		display_close();
 		return 1;

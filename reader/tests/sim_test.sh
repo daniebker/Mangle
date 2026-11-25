@@ -105,6 +105,16 @@ grep -q 'show p002.png page=1 panel=0 mode=panel' "$TMP/err" || fail "preview sh
 mkdir -p "$TMP/state_pv4"; cp "$TMP/state_pv/settings" "$TMP/state_pv4/settings"
 printf 'tap 10 400\nquit\n' | $BIN -v -s "$TMP/state_pv4" "$ZIP" >/dev/null 2>"$TMP/err"
 grep -q 'panel=-1' "$TMP/err" && fail "saved preview-off setting ignored"
+# Front light (600 wide: rows 58px, [-] at x 394..481, [+] at 497..584, bar 232..290 from x 16 to 584).
+# + twice, - once, then tap the bar's right end (max) and left end (off). Light changes are partial refreshes.
+printf 'tap 300 5\ntap 200 5\ntap 540 200\ntap 540 200\ntap 430 200\ntap 584 260\ntap 16 260\ntap 100 200\ntap 10 20\nquit\n' |
+	MANGLE_SIM_LIGHT=10/24 $BIN -s "$TMP/state_fl" "$ZIP" >"$TMP/out" 2>"$TMP/err"
+[ "$(grep '^LIGHT' "$TMP/out" | tr '\n' ' ')" = "LIGHT 11 LIGHT 12 LIGHT 11 LIGHT 24 LIGHT 0 " ] || fail "front light: $(grep '^LIGHT' "$TMP/out" | tr '\n' ' ')"
+[ "$(grep -A1 '^LIGHT' "$TMP/out" | grep -c '^FRAME.* partial')" = 5 ] || fail "light change should redraw with a partial refresh"
+# No front light: the row says so and taps do nothing.
+printf 'tap 300 5\ntap 200 5\ntap 540 200\ntap 300 260\ntap 10 20\nquit\n' |
+	MANGLE_SIM_LIGHT=none $BIN -s "$TMP/state_fl2" "$ZIP" >"$TMP/out" 2>"$TMP/err"
+grep -q '^LIGHT' "$TMP/out" && fail "set a light that isn't there"
 # Stats: a session is logged when the book closes (pages seen, start/end times).
 printf 'tap 10 400\nsleep 11000\ntap 10 400\nquit\n' | $BIN -v -s "$TMP/state_stats" "$ZIP" >/dev/null 2>"$TMP/err"
 [ -f "$TMP/state_stats/stats.log" ] || fail "no stats log"

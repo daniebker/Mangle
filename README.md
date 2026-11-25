@@ -156,6 +156,13 @@ empty `panels` list means the page is always shown whole.
 - The page, panel and mode are saved for each book and restored when you open it again. The
   library shows how far you've got in each book.
 - Tap the top edge for the menu bar: `Library` (back to the shelf), `Settings` and `Stats`.
+- **Front light**: `Settings` has a `Front light` row. Tap `-` or `+` to change it one step, or
+  tap the bar under it to jump to that level (left end = off). The change is made through the
+  Kindle's power daemon (`lipc-set-prop com.lab126.powerd flIntensity`), so the Kindle keeps
+  the level after Mangle exits and after sleep. If `lipc` isn't available, `/sys/class/backlight`
+  is used instead. Models without a front light show `not available`. The highest level is read
+  from powerd (24 if it doesn't say); set `MANGLE_LIGHT_MAX` in `mangle.conf` if it's wrong for
+  your model.
 
 Library screen: a shelf of covers (the first page of each book) with the title and progress
 under each one. Tap a cover to open it, tap the bottom strip (left/right half) to change shelf
@@ -244,7 +251,7 @@ marked as latest. It contains:
 4. Open KUAL and choose **Mangle → Library** or **Mangle → Resume last book**.
 
 Settings are in `extensions/mangle/mangle.conf`: library folder, full-refresh interval, page
-overview, waveform, and touch fixes. If something goes wrong, the log is in `extensions/mangle/mangle.log`.
+overview, waveform, front light range, and touch fixes. If something goes wrong, the log is in `extensions/mangle/mangle.log`.
 
 What the launcher does:
 
@@ -271,7 +278,8 @@ printf 'tap 10 700\ntap 10 700\nquit\n' | MANGLE_SIM_DIR=/tmp/frames ./build/sim
 
 Simulator commands are `tap X Y`, `long X Y`, `drag X Y DX DY`, `pinch X Y SCALE [DX DY]`
 (two fingers around X,Y; SCALE > 1 zooms in), `key CODE`, `sleep MS` and `quit`. The screen size
-comes from `MANGLE_SIM_SCREEN=WxH`.
+comes from `MANGLE_SIM_SCREEN=WxH`, and the front light from `MANGLE_SIM_LIGHT=LEVEL/MAX`
+(default `10/24`, `none` for no light); light changes are printed as `LIGHT n`.
 
 Preprocessor tests: `cd preprocessor && python -m pytest tests`.
 

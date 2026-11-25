@@ -35,7 +35,7 @@ all: sim
 # ---- desktop simulator -------------------------------------------------------
 sim: build/sim/mangle
 
-build/sim/mangle: $(CORE) $(SRC)/main.c $(SRC)/display_sim.c $(SRC)/input_sim.c $(wildcard $(SRC)/*.h)
+build/sim/mangle: $(CORE) $(SRC)/main.c $(SRC)/display_sim.c $(SRC)/input_sim.c $(SRC)/light_sim.c $(wildcard $(SRC)/*.h)
 	@mkdir -p $(@D)
 	$(CC) $(CPPFLAGS) $(CFLAGS) -o $@ $(filter %.c,$^) $(LDLIBS)
 
@@ -73,7 +73,7 @@ $(FBINK_A):
 	@mkdir -p $(@D)
 	cp $(FBINK_DIR)/Release/libfbink.a $@
 
-build/$(TARGET)/mangle: $(CORE) $(SRC)/main.c $(SRC)/display_fbink.c $(SRC)/input_evdev.c $(FBINK_A) $(wildcard $(SRC)/*.h)
+build/$(TARGET)/mangle: $(CORE) $(SRC)/main.c $(SRC)/display_fbink.c $(SRC)/input_evdev.c $(SRC)/light_kindle.c $(FBINK_A) $(wildcard $(SRC)/*.h)
 	@mkdir -p $(@D)
 	$(KCC) $(CPPFLAGS) -I$(FBINK_DIR) $(CFLAGS) -o $@ $(filter %.c,$^) $(FBINK_A) $(LDLIBS)
 	$(KSTRIP) --strip-unneeded $@
