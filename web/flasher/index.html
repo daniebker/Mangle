@@ -1,0 +1,257 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Mangle CYD Flasher</title>
+<meta name="description" content="Install the Mangle manga reader on a 3.5-inch Cheap Yellow Display (ESP32-3248S035) from your browser.">
+<script type="module" src="https://unpkg.com/esp-web-tools@10.4.0/dist/web/install-button.js?module"></script>
+<style>
+  :root {
+    --bg: #f6f5f2;
+    --card: #ffffff;
+    --ink: #1c1b19;
+    --muted: #6b6862;
+    --line: #e2dfd8;
+    --accent: #1f5fbf;
+    --accent-ink: #ffffff;
+    --warn-bg: #fff4d6;
+    --warn-ink: #6a4b00;
+    color-scheme: light;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #151515;
+      --card: #1f1f1e;
+      --ink: #ecebe8;
+      --muted: #a3a09a;
+      --line: #34332f;
+      --accent: #6ea4ff;
+      --accent-ink: #0d1626;
+      --warn-bg: #3a2f12;
+      --warn-ink: #f3d68a;
+      color-scheme: dark;
+    }
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    background: var(--bg);
+    color: var(--ink);
+    font: 16px/1.5 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  }
+  main { max-width: 640px; margin: 0 auto; padding: 40px 16px 64px; }
+  h1 { font-size: 1.75rem; margin: 0 0 4px; letter-spacing: -0.01em; }
+  .lead { color: var(--muted); margin: 0 0 28px; }
+  .card {
+    background: var(--card);
+    border: 1px solid var(--line);
+    border-radius: 12px;
+    padding: 20px;
+    margin-bottom: 16px;
+  }
+  .step { display: flex; gap: 14px; }
+  .step + .step { margin-top: 20px; padding-top: 20px; border-top: 1px solid var(--line); }
+  .num {
+    flex: none;
+    width: 28px; height: 28px;
+    border-radius: 50%;
+    background: var(--accent);
+    color: var(--accent-ink);
+    display: grid; place-items: center;
+    font-weight: 600; font-size: 0.9rem;
+  }
+  .step > div { flex: 1; min-width: 0; }
+  .step h2 { font-size: 1rem; margin: 2px 0 10px; }
+  select {
+    width: 100%;
+    font: inherit;
+    padding: 9px 10px;
+    border: 1px solid var(--line);
+    border-radius: 8px;
+    background: var(--bg);
+    color: var(--ink);
+  }
+  .boards { display: grid; gap: 8px; }
+  .boards label {
+    display: flex; gap: 10px; align-items: flex-start;
+    padding: 10px 12px;
+    border: 1px solid var(--line);
+    border-radius: 8px;
+    cursor: pointer;
+  }
+  .boards label:has(input:checked) { border-color: var(--accent); }
+  .boards input { margin-top: 4px; accent-color: var(--accent); }
+  .boards small { display: block; color: var(--muted); }
+  .meta { color: var(--muted); font-size: 0.875rem; margin: 8px 0 0; }
+  .meta a, a { color: var(--accent); }
+  esp-web-install-button button[slot="activate"] {
+    font: inherit; font-weight: 600;
+    padding: 10px 18px;
+    border: 0; border-radius: 8px;
+    background: var(--accent); color: var(--accent-ink);
+    cursor: pointer;
+  }
+  .note {
+    background: var(--warn-bg);
+    color: var(--warn-ink);
+    border-radius: 8px;
+    padding: 10px 12px;
+    font-size: 0.9rem;
+  }
+  .hidden { display: none; }
+  details summary { cursor: pointer; font-weight: 600; }
+  details ul, details ol { padding-left: 20px; margin: 8px 0 0; }
+  details li + li { margin-top: 4px; }
+  code { font-size: 0.875em; background: var(--bg); padding: 1px 5px; border-radius: 4px; border: 1px solid var(--line); }
+  footer { color: var(--muted); font-size: 0.875rem; margin-top: 24px; }
+</style>
+</head>
+<body>
+<main>
+  <h1>Mangle CYD Flasher</h1>
+  <p class="lead">Install the Mangle manga reader on a 3.5" Cheap Yellow Display (ESP32-3248S035) straight from your browser.</p>
+
+  <div class="card" id="installer">
+    <div class="step">
+      <span class="num">1</span>
+      <div>
+        <h2>Choose a release</h2>
+        <select id="release" aria-label="Release"></select>
+        <p class="meta" id="release-meta"></p>
+      </div>
+    </div>
+    <div class="step">
+      <span class="num">2</span>
+      <div>
+        <h2>Choose your board</h2>
+        <div class="boards" id="boards">
+          <label><input type="radio" name="board" value="cyd35r" checked>
+            <span>ESP32-3248S035<b>R</b><small>Resistive touch (XPT2046): the screen gives a little when pressed</small></span></label>
+          <label><input type="radio" name="board" value="cyd35c">
+            <span>ESP32-3248S035<b>C</b><small>Capacitive touch (GT911): glass, like a phone</small></span></label>
+        </div>
+        <p class="meta">The model is printed on the back of the board.</p>
+      </div>
+    </div>
+    <div class="step">
+      <span class="num">3</span>
+      <div>
+        <h2>Connect and install</h2>
+        <p class="meta" style="margin:0 0 12px">Plug the board in with a USB data cable, then pick its serial port.</p>
+        <esp-web-install-button id="install">
+          <button slot="activate">Connect and install</button>
+          <span slot="unsupported" class="note" style="display:block">Your browser can't talk to USB devices. Use Chrome or Edge on a desktop computer.</span>
+          <span slot="not-allowed" class="note" style="display:block">Installing needs a secure (https) page.</span>
+        </esp-web-install-button>
+        <p class="meta" id="install-meta"></p>
+      </div>
+    </div>
+  </div>
+
+  <div class="card hidden" id="empty">
+    <p class="note" style="margin:0">No release has firmware yet. Builds appear here after a version tag is pushed.</p>
+  </div>
+
+  <div class="card">
+    <details>
+      <summary>After installing</summary>
+      <ol>
+        <li>Convert books on your computer: <code>python prep.py book.cbz -o book.zip --device cyd</code></li>
+        <li>Copy them into a <code>manga</code> folder on a FAT32 microSD card, and put the card in the board.</li>
+        <li>The resistive board asks you to press three crosses to calibrate the touch screen. Hold the screen while powering on to do it again.</li>
+      </ol>
+    </details>
+  </div>
+
+  <div class="card">
+    <details>
+      <summary>If it doesn't connect</summary>
+      <ul>
+        <li>No port in the list: most CYD boards use a CH340 USB chip, which needs a driver on Windows and older macOS. Some USB cables only carry power; try another.</li>
+        <li>Stuck on "Connecting": hold the <b>BOOT</b> button on the board while you click Connect, and let go once installing starts.</li>
+        <li>Picture looks like a negative after installing: turn on <i>Invert panel</i> in the reader's Settings.</li>
+      </ul>
+    </details>
+  </div>
+
+  <footer>
+    <span id="repo-link"></span>
+    Installing uses <a href="https://esphome.github.io/esp-web-tools/">ESP Web Tools</a>; nothing is uploaded anywhere.
+  </footer>
+</main>
+
+<script>
+(async () => {
+  const relSel = document.getElementById("release");
+  const install = document.getElementById("install");
+  const relMeta = document.getElementById("release-meta");
+  const instMeta = document.getElementById("install-meta");
+  let releases = [];
+  let repo = null;
+
+  try {
+    const r = await fetch("releases.json", { cache: "no-cache" });
+    const data = await r.json();
+    releases = data.releases || [];
+    repo = data.repo;
+  } catch (e) {
+    releases = [];
+  }
+  if (repo) {
+    const a = document.createElement("a");
+    a.href = `https://github.com/${repo}`;
+    a.textContent = "Mangle on GitHub.";
+    document.getElementById("repo-link").append(a, " ");
+  }
+  if (!releases.length) {
+    document.getElementById("installer").classList.add("hidden");
+    document.getElementById("empty").classList.remove("hidden");
+    return;
+  }
+
+  releases.forEach((rel, i) => {
+    const o = document.createElement("option");
+    o.value = rel.tag;
+    o.textContent = rel.tag + (i === 0 ? " (latest)" : "") + (rel.prerelease ? " (pre-release)" : "");
+    relSel.append(o);
+  });
+  const wanted = new URLSearchParams(location.search).get("tag");
+  if (wanted && releases.some(r => r.tag === wanted)) relSel.value = wanted;
+
+  const board = () => document.querySelector('input[name="board"]:checked').value;
+
+  function update() {
+    const rel = releases.find(r => r.tag === relSel.value);
+    const parts = [];
+    if (rel.published_at) parts.push(new Date(rel.published_at).toLocaleDateString());
+    relMeta.textContent = parts.join(" · ");
+    if (rel.url) {
+      if (parts.length) relMeta.append(" · ");
+      const a = document.createElement("a");
+      a.href = rel.url;
+      a.textContent = "Release notes";
+      relMeta.append(a);
+    }
+    // Boards this release has firmware for.
+    for (const input of document.querySelectorAll('input[name="board"]')) {
+      const has = !!rel.boards[input.value];
+      input.disabled = !has;
+      input.closest("label").style.opacity = has ? "" : "0.45";
+    }
+    if (!rel.boards[board()]) {
+      const first = document.querySelector('input[name="board"]:not(:disabled)');
+      if (first) first.checked = true;
+    }
+    const b = rel.boards[board()];
+    install.setAttribute("manifest", b.manifest);
+    instMeta.textContent = `mangle-${board()}.bin · ${(b.size / 1048576).toFixed(2)} MB · SHA-256 ${b.sha256.slice(0, 12)}…`;
+  }
+
+  relSel.addEventListener("change", update);
+  document.getElementById("boards").addEventListener("change", update);
+  update();
+})();
+</script>
+</body>
+</html>

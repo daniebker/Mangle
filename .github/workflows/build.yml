@@ -131,7 +131,8 @@ jobs:
 
           Unzip the KUAL package into \`/mnt/us/extensions/\` on the Kindle.
           The CYD firmware is attached by its own workflow, so it may appear a few minutes later
-          (checksums in \`SHA256SUMS-cyd\`).
+          (checksums in \`SHA256SUMS-cyd\`). Install it from the browser with the web flasher:
+          https://${GH_REPO%%/*}.github.io/${GH_REPO#*/}/?tag=$TAG
           EOF
           # firmware.yml may have created the release first: then add to it.
           if gh release view "$TAG" >/dev/null 2>&1 ||

@@ -302,14 +302,29 @@ Copy the ZIPs to a FAT32 microSD card in a folder called `manga`, and put the ca
 
 ### Flashing
 
-Each release has `mangle-cyd35r.bin` (resistive) and `mangle-cyd35c.bin` (capacitive). The
-`CYD firmware` workflow also builds them on every branch push and pull request that touches the
-firmware; download them from the run's artifacts to try a branch. Each is a
-complete image: write it at offset `0x0`, for example with
-[ESP Web Tools](https://espressif.github.io/esptool-js/) in Chrome, or with esptool:
+The easiest way is the **[web flasher](https://daniebker.github.io/Mangle/)**. In Chrome or Edge
+on a desktop computer, plug the board in over USB, choose a release and your board, and click
+*Connect and install*. It lists the firmware of the newest releases; add `?tag=v0.9.0` to the
+address to preselect one.
+
+Each release also has `mangle-cyd35r.bin` (resistive) and `mangle-cyd35c.bin` (capacitive). Each
+is a complete image: write it at offset `0x0`, for example with esptool:
 
 ```sh
 esptool.py --chip esp32 write_flash 0x0 mangle-cyd35r.bin
+```
+
+The `CYD firmware` workflow also builds them on every branch push and pull request that touches
+the firmware; download them from the run's artifacts to try a branch.
+
+The flasher's source is `web/`. `.github/workflows/pages.yml` publishes it to GitHub Pages
+together with the firmware of the newest releases (browsers can't download release assets from
+GitHub directly). It runs after each tagged release, so new versions appear on their own.
+Preview it locally with fake or downloaded images:
+
+```sh
+python web/build_site.py /tmp/site --local v0.9.0=folder/with/bins
+python -m http.server -d /tmp/site
 ```
 
 To build it yourself, install [PlatformIO](https://platformio.org/) (`pip install platformio`):

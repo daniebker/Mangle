@@ -5,6 +5,7 @@
 ### Added
 - Firmware for the 3.5" Cheap Yellow Display (ESP32-3248S035, resistive `R` and capacitive `C` boards) in `cyd/`. It reads the same book ZIPs from an SD card: a library of covers, panel and page mode, tap and swipe to turn, zoom by holding a side (or pinching on the capacitive board), a menu bar, settings (rotation, brightness, sleep, night mode), and resume at power-on. Pages are decoded and scaled row by row, so the board needs no PSRAM. Navigation, gestures and zoom use the Kindle reader's code.
 - Desktop simulator and tests for the firmware (`make -C cyd test`, part of `./build.sh test`). `./build.sh cyd` builds the firmware with PlatformIO, and releases include flashable `mangle-cyd35r.bin` and `mangle-cyd35c.bin` images.
+- Web flasher for the CYD on GitHub Pages (https://daniebker.github.io/Mangle/): choose a release and a board, then install from Chrome or Edge over USB. `.github/workflows/pages.yml` republishes it with the firmware of the newest releases after every tagged release.
 - `prep.py --device cyd`: 640x960 pages with no gamma or dithering, for the LCD. `--dither` turns dithering back on.
 
 ## v0.8.0

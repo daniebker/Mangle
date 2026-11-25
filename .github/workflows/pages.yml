@@ -1,0 +1,66 @@
+name: Web flasher
+
+# Publishes the CYD web flasher (web/flasher) to GitHub Pages, together with
+# the firmware images of the newest releases (web/build_site.py copies them,
+# because browsers can't download GitHub release assets directly).
+#
+# Runs after the CYD firmware workflow has attached images to a release for a
+# version tag, when the flasher changes on main, and on demand. It always runs
+# on the default branch (workflow_run does too), which the github-pages
+# environment allows to deploy.
+#
+# One-time setup: Settings -> Pages -> Build and deployment -> Source: GitHub Actions.
+
+on:
+  workflow_run:
+    workflows: ["CYD firmware"]
+    types: [completed]
+  push:
+    branches: [main]
+    paths:
+      - 'web/**'
+      - '.github/workflows/pages.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  build:
+    # For workflow_run: only after a successful run for a pushed version tag.
+    if: >-
+      github.event_name != 'workflow_run' ||
+      (github.event.workflow_run.conclusion == 'success' &&
+       github.event.workflow_run.event == 'push' &&
+       startsWith(github.event.workflow_run.head_branch, 'v'))
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Build site
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: python3 web/build_site.py _site --repo "${{ github.repository }}"
+
+      - uses: actions/configure-pages@v5
+
+      - uses: actions/upload-pages-artifact@v4
+        with:
+          path: _site
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v4
