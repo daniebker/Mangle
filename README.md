@@ -2,15 +2,25 @@
 
 Read manga panel by panel on a jailbroken Kindle, or on a 3.5" ESP32 "Cheap Yellow Display".
 
-There are three parts:
+There are two parts:
 
 1. **Preprocessor** (`preprocessor/`, Python, runs on your computer). It takes a ZIP/CBZ of
-   pages, finds the panels, prepares every image for e-ink, and writes a ZIP with a
+   pages, finds the panels, prepares every image for the screen, and writes a ZIP with a
    `manifest.json`.
-2. **Reader** (`reader/`, C, runs on the Kindle and is started from KUAL). It opens those ZIPs
-   and shows them panel by panel or page by page.
-3. **CYD firmware** (`cyd/`, C, runs on an ESP32-3248S035 board). The same reader for the
-   3.5" Cheap Yellow Display, reading the same ZIPs from its SD card.
+2. **Reader** (C). It opens those ZIPs and shows them panel by panel or page by page. One app,
+   built for two devices with the same features:
+   - **Kindle** (`reader/`): a KUAL extension for jailbroken Kindles.
+   - **Cheap Yellow Display** (`cyd/`): firmware for the 3.5" ESP32-3248S035 board.
+
+### Code layout
+
+| Folder | What |
+|---|---|
+| `common/src` | The whole app, shared by every build: library, reading screen, menu, settings, reading statistics, navigation, gestures, zoom, ZIP and PNG decoding, scaling. `hal.h` is the interface to the device. |
+| `common/sim` | A desktop simulator of that interface, to run and test the app as either device. |
+| `common/tests` | Unit tests and end-to-end tests of the app, as a Kindle and as both CYD boards. |
+| `reader/` | The Kindle's hardware layer (`src/hal_kindle.c`: FBInk e-ink display, evdev touch and buttons, frontlight, suspend) and the KUAL packaging. |
+| `cyd/` | The CYD's hardware layer (`src/board/`: ST7796 LCD, XPT2046 or GT911 touch, SD card, backlight, light sleep, Wi-Fi clock) and the PlatformIO project. |
 
 All the heavy work (finding panels, resizing, dithering) happens on the computer. The Kindle
 only decodes small PNGs that are already the right size, so page turns stay fast.
@@ -134,9 +144,10 @@ empty `panels` list means the page is always shown whole.
 | Tap centre once | forward | forward |
 | Double-tap centre | switch panel ↔ page mode | same |
 | Hold centre (0.7 s) | close the book (back to the library) | same |
-| Hold left/right | full refresh (clears ghosting) | same |
+| Hold left/right | zoom 2x around the finger, again for 3x, again for the fitted view | same |
+| Swipe (not zoomed) | swipe right: forward, left: back | swipe left: forward, right: back |
 | Page-turn buttons | forward / back | same |
-| Pinch out / in (two fingers) | zoom in / out of the panel or page | same |
+| Pinch out / in (two fingers, not on the resistive CYD) | zoom in / out of the panel or page | same |
 | Drag (while zoomed) | pan | same |
 | Double-tap centre (while zoomed) | back to the fitted view | same |
 
@@ -147,32 +158,45 @@ empty `panels` list means the page is always shown whole.
   `PAGE_OVERVIEW=0` in `mangle.conf` (or run the reader with `-O`).
 - **Page mode** moves a whole page at a time.
 - Switching modes keeps you on the same page.
-- **Zoom**: pinch with two fingers to zoom into the current panel or page (up to 4x the fitted
-  size), around the point between your fingers. The new view is drawn once you lift a finger
-  (e-ink can't follow the fingers live). While zoomed, drag with one finger to pan; the view
-  stays inside the panel (or page). Pinch back in, or double-tap the centre, to return to the
-  fitted view. Turning the page or panel also resets the zoom. Taps keep working as usual.
+- **Zoom**: hold a side of the screen to zoom 2x around your finger, hold again for 3x, and a
+  third time to go back to the fitted view (with a full refresh on e-ink). Or pinch with two
+  fingers to zoom into the current panel or page (up to 4x the fitted size), around the point
+  between your fingers; the new view is drawn once you lift a finger. While zoomed, drag with
+  one finger to pan; the view stays inside the panel (or page). Pinch back in, or double-tap
+  the centre, to return to the fitted view. Turning the page or panel also resets the zoom.
 - Only centre taps wait 300 ms for a possible second tap. Side taps turn the page immediately.
-- Normal turns use a fast partial refresh. Every 8th turn (configurable) and every mode switch
-  uses a full flashing refresh to clear ghosting.
-- The next image (and the previous one) is decoded in the background while you read.
+- On e-ink, normal turns use a fast partial refresh. Every 8th turn (configurable), every mode
+  switch and every return from a menu uses a full flashing refresh to clear ghosting. The `R`
+  key also forces one.
+- On the Kindle the next image (and the previous one) is decoded in the background while you
+  read. The CYD has too little memory for that and draws straight from the card.
 - The page, panel and mode are saved for each book and restored when you open it again. The
   library shows how far you've got in each book.
-- Tap the top edge for the menu bar: `Library` (back to the shelf), `Settings` and `Stats`.
+- Tap the top edge for the menu bar: `< Library` (back to the shelf), `Settings`, `Stats` and
+  the page number.
+- **Settings**: page preview in panel mode, sleep after 2/5/10/30 minutes or never,
+  brightness (frontlight or backlight), rotation (0/90/180/270), night mode (inverted grays),
+  plus the CYD's `Invert panel` and `Calibrate touch`. They are saved in the state folder.
+- **Sleep**: after the idle time the book's cover is shown and the device sleeps (the Kindle
+  suspends and wakes with the power button; the CYD turns its screen off and wakes on a touch).
+- **Resume**: the Kindle's `Resume last book` reopens the last book. The CYD reopens the book
+  that was open when it was switched off, and starts in the library if you closed the book.
 
 Library screen: a shelf of covers (the first page of each book) with the title and progress
-under each one. Tap a cover to open it, tap the bottom strip (left/right half) to change shelf
-page, tap `[stats]` for reading statistics, and tap anywhere else on the top strip to exit.
+under each one. Tap a cover to open it, tap or swipe the bottom strip to change shelf page, and
+use the header for `Stats`, `Settings` and (on the Kindle) `Exit`. Covers are cached in the
+state folder.
 
 ### Reading statistics
 
-Every reading session is logged to `state/stats.log`, one line per session:
+Both devices record reading statistics. Every reading session is logged to `stats.log` in the
+state folder, one line per session:
 `START END PAGES BOOK` (Unix times, number of different pages seen, book file name). A session
-starts when you open a book and ends when you close it, when the Kindle goes to sleep, or after
+starts when you open a book and ends when you close it, when the device goes to sleep, or after
 5 minutes without a tap or key press (it ends at your last input, and the next input starts a new
 session). Sessions under 10 seconds aren't logged.
 
-Open the stats from the library's `[stats]` entry or from the menu bar's `Stats` entry while
+Open the stats from the library's `Stats` button or from the menu bar's `Stats` entry while
 reading. The session you're in is included.
 
 - **Daily**: today's and this week's reading time and pages, your current and best streak (days
@@ -183,7 +207,9 @@ reading. The session you're in is included.
   day, and the change from the previous month. Tap the bottom strip (or use the page-turn
   buttons) to go to the previous or next month; the middle goes back to this month.
 
-Days and hours use the Kindle's local time. If they look shifted, set `TZ` in `mangle.conf`.
+Days and hours use local time. On the Kindle, if they look shifted, set `TZ` in `mangle.conf`.
+The CYD has no clock that survives power-off: it sets the time over Wi-Fi at power-on (see
+the CYD section), and without that the stats screen says so and nothing is recorded.
 
 ### Building
 
@@ -193,7 +219,7 @@ From the repository root:
 ./build.sh toolchain kindlehf   # one-off: download koxtoolchain into ~/x-tools (~100 MB)
 ./build.sh kindlehf             # firmware 5.16.3 and newer -> reader/dist/mangle-kual-kindlehf.zip
 ./build.sh kindlepw2            # older 5.x firmware (soft-float)
-./build.sh sim                  # desktop simulator
+./build.sh sim                  # desktop simulator (common/build/mangle)
 ./build.sh test                 # preprocessor + reader tests
 ./build.sh --help
 ```
@@ -222,7 +248,7 @@ Cross-compiling needs [koxtoolchain](https://github.com/koreader/koxtoolchain) o
 `kindlepw2`. For any other toolchain, use `make build/<name>/mangle TARGET=<name>
 CROSS=<triplet>`.
 
-miniz, cJSON and stb_image are included in `reader/third_party/`. FBInk is built as a
+miniz and stb_image (tests only) are included in `common/third_party/`. FBInk is built as a
 `MINIMAL BITMAP IMAGE` static library (built-in font plus raw image blitting). Its Kobo-only
 i2c-tools dependency is skipped.
 
@@ -266,18 +292,21 @@ size, the reader centres it, or shrinks it if it's too big, and logs a warning.
 
 ### Testing on the desktop
 
-The reader has a simulator backend. It writes frames as PGM files and reads taps from stdin, so
-navigation, refresh behaviour, resume and the library can all be tested without a Kindle:
+The app runs on the desktop with a simulated device. It writes each screen as a PGM file and
+reads taps from stdin, so navigation, refresh behaviour, resume, the library, settings and
+statistics can all be tested without a Kindle or a CYD:
 
 ```sh
-cd reader
-make test                 # unit tests (ASan/UBSan) + end-to-end simulator test
-printf 'tap 10 700\ntap 10 700\nquit\n' | MANGLE_SIM_DIR=/tmp/frames ./build/sim/mangle -v book.zip
+make -C common test        # unit tests (ASan/UBSan) + end-to-end tests as a Kindle and as both CYDs
+make -C reader test        # Kindle-only tests (evdev touch decoding)
+printf 'tap 10 700\ntap 10 700\nquit\n' | MANGLE_SIM_DIR=/tmp/frames common/build/mangle -v book.zip
 ```
 
 Simulator commands are `tap X Y`, `long X Y`, `drag X Y DX DY`, `pinch X Y SCALE [DX DY]`
-(two fingers around X,Y; SCALE > 1 zooms in), `key CODE`, `sleep MS` and `quit`. The screen size
-comes from `MANGLE_SIM_SCREEN=WxH`.
+(two fingers around X,Y; SCALE > 1 zooms in), `key CODE`, `sleep MS` and `quit`.
+`MANGLE_SIM_DEVICE=kindle|cyd35r|cyd35c` picks the device (screen size, touch, which settings
+exist); `MANGLE_SIM_SCREEN=WxH` overrides the screen size. Options are the Kindle's (`-l`, `-s`,
+`-r`, `-t`, `-f`, `-O`, `-v`), plus `-R` to reopen the book only if it was open, as the CYD does.
 
 Preprocessor tests: `cd preprocessor && python -m pytest tests`.
 
@@ -285,7 +314,8 @@ Preprocessor tests: `cd preprocessor && python -m pytest tests`.
 
 `cyd/` is the reader as firmware for the **ESP32-3248S035**, the 3.5" Cheap Yellow Display
 (ST7796 320x480 LCD, SD card slot). Both versions of the board work: `R` (resistive touch,
-XPT2046) and `C` (capacitive touch, GT911).
+XPT2046) and `C` (capacitive touch, GT911). It is the same app as on the Kindle (see the Reader
+section for the controls); only the hardware layer in `cyd/src/board/` is its own.
 
 ### Making books for it
 
@@ -339,53 +369,37 @@ or `./build.sh cyd` from the repository root. Pins and options are in `cyd/src/b
 
 ### Using it
 
-- At power-on it opens the book you were reading. Otherwise it shows the library, two covers
-  per row, with the title and how far you've read. Tap a cover to open it. Tap or swipe the
-  bottom strip to change shelf page, and tap `Settings` at the top right.
-- Reading works like on the Kindle: tap the left or right third to turn, tap the centre to go
-  forward, double-tap the centre to switch between panel and page mode, hold the centre to go
-  back to the library, and tap the top edge for the menu bar (`< Library`, `Settings`, page
-  number).
-- You can also **swipe** to turn the page (in RTL books, swipe right to go forward).
-- **Zoom**: hold a side of the screen to zoom 2x around your finger, hold again for 3x, and a
-  third time to go back to the fitted view. Drag to pan while zoomed. On the capacitive board,
-  pinch zooms too.
-- **Settings**: page preview in panel mode, sleep after 2/5/10/30 minutes (screen off; touch to
-  wake), brightness, rotation (0/90/180/270), night mode (inverted grays), `Invert panel` (use
-  this if everything looks like a negative, because some batches of the display need it), and
-  `Calibrate touch` on the resistive board.
-- The resistive board asks for touch calibration on first start (press three crosses). Hold the
-  screen while powering on to calibrate again.
-- Positions, settings and cover thumbnails are kept in `manga/.mangle/` on the card, one
-  `.pos` file per book as on the Kindle.
+The controls, settings, library and statistics are the Reader section's. Specific to the CYD:
 
-There are no reading statistics on the CYD, because the board has no clock.
+- The resistive board asks for touch calibration on first start (press three crosses). Hold the
+  screen while powering on to calibrate again. It can't pinch: hold a side to zoom.
+- `Invert panel` in the settings fixes displays that come up as a negative.
+- Positions, settings, statistics and cover thumbnails are kept in `manga/.mangle/` on the card.
+- **Clock for reading statistics**: put a `wifi.txt` in `manga/.mangle/` with the network name
+  on the first line, the password on the second, and optionally your time zone in POSIX form on
+  the third (e.g. `CET-1CEST,M3.5.0,M10.5.0/3`; the default is UTC). At power-on the board
+  joins the network, sets its clock and turns Wi-Fi off again.
 
 ### How it fits in 520 KB of RAM
 
-The board has no PSRAM, so a page is never decoded whole. `cyd/src/pngs.c` decodes a PNG one
-row at a time straight from the ZIP on the SD card. `cyd/src/render.c` scales each row on the
+The board has no PSRAM, so a page is never decoded whole. `common/src/pngs.c` decodes a PNG one
+row at a time straight from the ZIP on the SD card. `common/src/render.c` scales each row on the
 way: it averages areas when shrinking, uses bilinear sampling when enlarging, and only draws
 the part of the page that is visible. It stops decoding once the panel's last row is drawn.
-The manifest is parsed while it is being read (`cyd/src/cbook.c`) instead of being built as a
-JSON tree. A page turn needs about 60 KB of memory.
-
-Navigation, gestures, zoom and the font come from the Kindle reader's source files
-(`reader/src/nav.c`, `gesture.c`, `zoom.c` and `font.c`), so both readers behave the same.
+The manifest is parsed while it is being read (`common/src/book.c`) instead of being built as
+a JSON tree. A page turn needs about 60 KB of memory. The Kindle uses the same decoder and
+scaler; it just decodes the next pages ahead into memory.
 
 ### Testing on the desktop
 
-All of the firmware except `cyd/src/board/` also builds against a simulated screen:
+Everything but `cyd/src/board/` is the shared app, tested on the desktop as both boards:
 
 ```sh
-cd cyd
-make test        # unit tests (ASan/UBSan) + end-to-end simulator test
-printf 'tap 80 150\ntap 10 300\nquit\n' | MANGLE_SIM_LIBRARY=~/manga MANGLE_SIM_DIR=/tmp/frames ./build/cydsim
+make -C common test
+printf 'tap 80 150\ntap 10 300\nquit\n' | MANGLE_SIM_DEVICE=cyd35r MANGLE_SIM_DIR=/tmp/frames common/build/mangle -v -R -l ~/manga -s ~/manga/.mangle
 ```
 
-The simulator takes the same commands as the Kindle one (`tap`, `long`, `drag`, `pinch`,
-`sleep`, `quit`) and writes each screen as a PGM file. The unit tests check the PNG decoder
-against stb_image for every colour type and bit depth.
+The unit tests also check the PNG decoder against stb_image for every colour type and bit depth.
 
 ## Status and open questions
 
@@ -396,4 +410,4 @@ against stb_image for every colour type and bit depth.
 - **Left-to-right comics** are supported with `--direction ltr`, which flips the panel order
   and the tap zones.
 - Licensing: Mangle is AGPL-3.0 (see `LICENSE`), as is the bundled Kumiko. The Kindle binary
-  also links FBInk (GPLv3) statically. miniz and cJSON are MIT; stb_image is public domain.
+  also links FBInk (GPLv3) statically. miniz is MIT; stb_image (tests only) is public domain.

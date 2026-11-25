@@ -1,25 +1,29 @@
 // Hardware layer for the ESP32-3248S035 (3.5" Cheap Yellow Display):
 // ST7796 display, XPT2046 (resistive) or GT911 (capacitive) touch, SD card,
-// PWM backlight and light sleep.
+// PWM backlight, light sleep, and the clock (set over Wi-Fi at power-on).
+// Everything else is the shared app in common/src.
 #include <Arduino.h>
 #include <SD.h>
 #include <SPI.h>
 #include <driver/gpio.h>
 #include <esp_sleep.h>
 #include <math.h>
+#include <WiFi.h>
 #include <stdarg.h>
 #include <stdio.h>
+#include <string.h>
 #include <sys/stat.h>
+#include <time.h>
 
 #ifdef TOUCH_GT911
 #include <Wire.h>
 #endif
 
-#include "../hal.h"
+#include "hal.h"
 extern "C" {
-#include "../store.h"
-#include "../tin.h"
-#include "../ui.h"
+#include "store.h"
+#include "tin.h"
+#include "ui.h"
 }
 #include "board.h"
 
@@ -77,6 +81,8 @@ static void build_lut(void)
 	}
 }
 
+static void flush_rows(void);
+
 static void lcd_init(void)
 {
 	pinMode(LCD_CS, OUTPUT);
@@ -118,7 +124,7 @@ static void lcd_init(void)
 	hal_set_invert(false);
 	build_lut();
 	hal_fill(0, 0, NATIVE_W, NATIVE_H, 255);
-	hal_flush();
+	flush_rows();
 	lcd_begin();
 	lcd_cmd(0x29);    // display on
 	lcd_end();
@@ -139,7 +145,7 @@ enum { BATCH = 16 };
 static uint16_t pending[NATIVE_H * BATCH];
 static int      px, py, pw, pn;
 
-void hal_flush(void)
+static void flush_rows(void)
 {
 	if (!pn)
 		return;
@@ -153,7 +159,7 @@ void hal_flush(void)
 void hal_set_rotation(int r)
 {
 	static const uint8_t mad[4] = LCD_MADCTL;
-	hal_flush();
+	flush_rows();
 	rotation = r & 3;
 	lcd_begin();
 	lcd_cmd_data(0x36, &mad[rotation], 1);
@@ -172,7 +178,7 @@ void hal_row(int x, int y, int w, const uint8_t* g)
 	if (w <= 0)
 		return;
 	if (pn && (x != px || w != pw || y != py + pn || pn == BATCH))
-		hal_flush();
+		flush_rows();
 	if (!pn)
 		px = x, py = y, pw = w;
 	uint16_t* o = pending + (size_t) pn * w;
@@ -193,7 +199,7 @@ void hal_fill(int x, int y, int w, int h, uint8_t v)
 		h = hal_height() - y;
 	if (w <= 0 || h <= 0)
 		return;
-	hal_flush();
+	flush_rows();
 	uint16_t c = lut[v];
 	for (int i = 0; i < NATIVE_H * BATCH; i++)
 		pending[i] = c;
@@ -208,16 +214,27 @@ void hal_fill(int x, int y, int w, int h, uint8_t v)
 	lcd_end();
 }
 
+void hal_present(bool full)
+{
+	(void) full;    // an LCD has no ghosting to clear
+	flush_rows();
+}
+
 void hal_set_night(bool on)
 {
-	hal_flush();
+	flush_rows();
 	night = on;
 	build_lut();
 }
 
+bool hal_has_invert(void)
+{
+	return true;
+}
+
 void hal_set_invert(bool on)
 {
-	hal_flush();
+	flush_rows();
 	invert_panel = on;
 	lcd_begin();
 	lcd_cmd(on ? 0x21 : 0x20);
@@ -232,6 +249,11 @@ static void backlight_raw(int pct)
 #else
 	ledcWrite(0, duty);
 #endif
+}
+
+bool hal_has_backlight(void)
+{
+	return true;
 }
 
 void hal_backlight(int pct)
@@ -256,12 +278,7 @@ static void backlight_init(void)
 // Contacts in screen coordinates for the current rotation, from portrait ones.
 static TPoint rotate_point(int x, int y)
 {
-	switch (rotation) {
-		case 1: return TPoint{ y, NATIVE_W - 1 - x };
-		case 2: return TPoint{ NATIVE_W - 1 - x, NATIVE_H - 1 - y };
-		case 3: return TPoint{ NATIVE_H - 1 - y, x };
-		default: return TPoint{ x, y };
-	}
+	return tin_rotate(rotation, NATIVE_W, NATIVE_H, x, y);
 }
 
 static int clampi(int v, int lo, int hi)
@@ -374,15 +391,17 @@ bool hal_multitouch(void)
 	return true;
 }
 
+bool hal_can_calibrate(void)
+{
+	return false;
+}
+
 bool hal_needs_calibration(void)
 {
 	return false;
 }
 
-bool hal_calibrate(void)
-{
-	return false;
-}
+void hal_calibrate(void) {}
 
 static void touch_sleep_prepare(void) {}
 
@@ -404,7 +423,7 @@ static int best_two_avg(int a, int b, int c)
 // Raw reading. Returns false when nothing presses hard enough.
 static bool xpt_raw(int* rx, int* ry)
 {
-	hal_flush();
+	flush_rows();
 	lcd_spi.beginTransaction(SPISettings(XPT_SPI_HZ, MSBFIRST, SPI_MODE0));
 	digitalWrite(XPT_CS, LOW);
 	lcd_spi.transfer(0xB1);
@@ -468,6 +487,11 @@ bool hal_multitouch(void)
 	return false;
 }
 
+bool hal_can_calibrate(void)
+{
+	return true;
+}
+
 bool hal_needs_calibration(void)
 {
 	// No calibration yet, or the screen is held down at power-on.
@@ -508,7 +532,7 @@ static void sample_point(int* rx, int* ry)
 	}
 }
 
-bool hal_calibrate(void)
+void hal_calibrate(void)
 {
 	int saved_rot = rotation;
 	hal_set_rotation(0);
@@ -520,7 +544,7 @@ bool hal_calibrate(void)
 		ui_text_fit(0, 190, NATIVE_W, 1, "Press the centre of the cross firmly", UI_BLACK, UI_WHITE, 1);
 		ui_text_fit(0, 206, NATIVE_W, 1, "(a stylus or fingernail works best)", UI_GRAY, UI_WHITE, 1);
 		crosshair(sx[i], sy[i], UI_BLACK);
-		hal_flush();
+		flush_rows();
 		sample_point(&rx[i], &ry[i]);
 	}
 	// Solve x = a*rx + b*ry + c (and the same for y) through the three points.
@@ -543,10 +567,11 @@ bool hal_calibrate(void)
 	}
 	hal_fill(0, 0, NATIVE_W, NATIVE_H, UI_WHITE);
 	ui_text_fit(0, 220, NATIVE_W, 2, ok ? "Calibrated" : "Try again", UI_BLACK, UI_WHITE, 1);
-	hal_flush();
+	flush_rows();
 	delay(700);
 	hal_set_rotation(saved_rot);
-	return ok ? true : hal_calibrate();
+	if (!ok)
+		hal_calibrate();
 }
 
 static void touch_sleep_prepare(void)
@@ -573,7 +598,7 @@ static int touch_now(TPoint* out)
 
 int hal_wait(InEvent* ev, int timeout_ms)
 {
-	hal_flush();
+	flush_rows();
 	int64_t end = timeout_ms >= 0 ? hal_ms() + timeout_ms : 0;
 	for (;;) {
 		TPoint p[2];
@@ -586,9 +611,9 @@ int hal_wait(InEvent* ev, int timeout_ms)
 	}
 }
 
-void hal_sleep_until_touch(void)
+bool hal_sleep(void)
 {
-	hal_flush();
+	flush_rows();
 	backlight_raw(0);
 	lcd_begin();
 	lcd_cmd(0x10);    // display sleep in (keeps its memory)
@@ -605,24 +630,25 @@ void hal_sleep_until_touch(void)
 	TPoint p[2];
 	while (touch_now(p) > 0)
 		delay(20);
-	tin_init(&tin);
+	tin_init(&tin, 14);    // resistive panels jitter: 14 px still counts as a tap
 	lcd_begin();
 	lcd_cmd(0x11);    // sleep out
 	lcd_end();
 	delay(120);
 	backlight_raw(bl_pct);
+	return true;
 }
 
 // ---- system ----------------------------------------------------------------------------
 
-const char* hal_library_dir(void)
+bool hal_can_exit(void)
 {
-	return LIBRARY_DIR;
+	return false;
 }
 
-const char* hal_state_dir(void)
+bool hal_clock_ok(void)
 {
-	return STATE_DIR;
+	return time(NULL) > 1577836800;    // after 2020: set over Wi-Fi at power-on
 }
 
 int64_t hal_ms(void)
@@ -641,10 +667,44 @@ void hal_log(const char* fmt, ...)
 	Serial.print(buf);
 }
 
-void hal_halt(void)
+// The board has no clock that survives power-off. If the state folder has
+// wifi.txt (network name, password, and optionally a POSIX time zone such as
+// CET-1CEST,M3.5.0,M10.5.0/3, one per line), connect once at power-on, set
+// the time, and turn Wi-Fi off again. Without it, reading statistics are off.
+static void clock_sync(void)
 {
-	for (;;)
-		delay(1000);
+	FILE* f = fopen(STATE_DIR "/wifi.txt", "r");
+	if (!f)
+		return;
+	char ssid[64] = "", pass[96] = "", tz[64] = "UTC0";
+	if (fgets(ssid, sizeof(ssid), f) && fgets(pass, sizeof(pass), f) && !fgets(tz, sizeof(tz), f))
+		snprintf(tz, sizeof(tz), "UTC0");
+	fclose(f);
+	ssid[strcspn(ssid, "\r\n")] = 0;
+	pass[strcspn(pass, "\r\n")] = 0;
+	tz[strcspn(tz, "\r\n")]     = 0;
+	if (!ssid[0])
+		return;
+	const char* lines[] = { "Setting the clock", "", ssid };
+	ui_message(lines, 3);
+	flush_rows();
+	WiFi.mode(WIFI_STA);
+	WiFi.begin(ssid, pass);
+	for (int i = 0; i < 100 && WiFi.status() != WL_CONNECTED; i++)
+		delay(100);
+	if (WiFi.status() == WL_CONNECTED) {
+		configTzTime(tz[0] ? tz : "UTC0", "pool.ntp.org", "time.google.com");
+		struct tm tm;
+		if (getLocalTime(&tm, 8000))
+			hal_log("clock set: %04d-%02d-%02d %02d:%02d\n", tm.tm_year + 1900, tm.tm_mon + 1, tm.tm_mday,
+				tm.tm_hour, tm.tm_min);
+		else
+			hal_log("no time from the network\n");
+	} else {
+		hal_log("cannot join Wi-Fi network %s\n", ssid);
+	}
+	WiFi.disconnect(true);
+	WiFi.mode(WIFI_OFF);    // frees the radio's memory for the reader
 }
 
 static bool sd_mount(void)
@@ -660,16 +720,18 @@ extern "C" void cyd_init(void)
 	backlight_init();
 	lcd_init();
 	touch_init();
-	tin_init(&tin);
+	tin_init(&tin, 14);    // resistive panels jitter: 14 px still counts as a tap
 	hal_backlight(bl_pct);
 	hal_log("free heap %u, largest block %u\n", (unsigned) ESP.getFreeHeap(), (unsigned) ESP.getMaxAllocHeap());
 	while (!sd_mount()) {
 		const char* lines[] = { "No SD card", "", "Insert a FAT32 card with your books in /manga" };
 		ui_message(lines, 3);
+		flush_rows();
 		SD.end();
 		delay(2000);
 	}
 	mkdir(LIBRARY_DIR, 0755);
 	mkdir(STATE_DIR, 0755);
 	hal_log("SD card: %llu MB\n", (unsigned long long) (SD.cardSize() / (1024 * 1024)));
+	clock_sync();
 }

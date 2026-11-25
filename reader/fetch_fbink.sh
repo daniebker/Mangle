@@ -2,6 +2,7 @@
 # Fetch FBInk (GPLv3, not vendored) at a pinned release, with its submodules.
 set -eu
 VERSION=${FBINK_VERSION:-v1.25.0}
+mkdir -p "$(dirname "$0")/third_party"
 cd "$(dirname "$0")/third_party"
 if [ -d FBInk/.git ]; then
 	echo "third_party/FBInk already present (delete it to re-fetch)"

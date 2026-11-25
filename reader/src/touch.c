@@ -1,6 +1,5 @@
 #include "touch.h"
 
-#include <math.h>
 #include <stdlib.h>
 #include <string.h>
 
@@ -42,87 +41,19 @@ void touch_map(const Touch* t, int rx, int ry, int* x, int* y)
 		*y = t->screen_h - 1 - *y;
 }
 
-static void map_contact(const Touch* t, int i, int* x, int* y)
+// A frame is complete: list the contacts that are down, in screen coordinates.
+static int frame(const Touch* t, TPoint* pts)
 {
-	touch_map(t, t->c[i].rx, t->c[i].ry, x, y);
-}
-
-static void pinch_points(const Touch* t, int pts[4])
-{
-	map_contact(t, 0, &pts[0], &pts[1]);
-	map_contact(t, 1, &pts[2], &pts[3]);
-}
-
-static double dist(const int p[4])
-{
-	double dx = p[2] - p[0], dy = p[3] - p[1];
-	return sqrt(dx * dx + dy * dy);
-}
-
-// A frame is complete: work out what the fingers did.
-static TouchResult frame(Touch* t, int64_t now, TouchOut* out)
-{
-	int n = 0, first = -1;
+	int n = 0;
 	for (int i = 0; i < TOUCH_MAX; i++)
 		if (t->c[i].down) {
+			touch_map(t, t->c[i].rx, t->c[i].ry, &pts[n].x, &pts[n].y);
 			n++;
-			if (first < 0)
-				first = i;
 		}
-
-	switch (t->state) {
-		case TS_IDLE:
-		case TS_ONE:
-			if (n >= 2) {
-				pinch_points(t, t->p0);
-				memcpy(t->p1, t->p0, sizeof(t->p1));
-				t->state = TS_PINCH;
-				return TOUCH_NONE;
-			}
-			if (n == 1) {
-				int x, y;
-				map_contact(t, first, &x, &y);
-				if (t->state == TS_IDLE) {
-					t->sx = x, t->sy = y, t->maxmove = 0;
-					t->t_down = now;
-					t->state  = TS_ONE;
-				}
-				int m = abs(x - t->sx) + abs(y - t->sy);
-				if (m > t->maxmove)
-					t->maxmove = m;
-				t->lx = x, t->ly = y;
-				return TOUCH_NONE;
-			}
-			if (t->state == TS_IDLE)
-				return TOUCH_NONE;
-			t->state = TS_IDLE;
-			*out     = (TouchOut){ t->sx, t->sy, t->lx - t->sx, t->ly - t->sy, 1.0f };
-			if (t->maxmove <= (t->screen_w < t->screen_h ? t->screen_w : t->screen_h) / 20) {
-				out->dx = out->dy = 0;
-				return (now - t->t_down >= LONG_PRESS_MS) ? TOUCH_LONG : TOUCH_TAP;
-			}
-			return TOUCH_DRAG;
-		case TS_PINCH: {
-			if (n >= 2) {
-				pinch_points(t, t->p1);
-				return TOUCH_NONE;
-			}
-			t->state  = n == 0 ? TS_IDLE : TS_WAIT_UP;
-			double d0 = dist(t->p0), d1 = dist(t->p1);
-			int    mx0 = (t->p0[0] + t->p0[2]) / 2, my0 = (t->p0[1] + t->p0[3]) / 2;
-			int    mx1 = (t->p1[0] + t->p1[2]) / 2, my1 = (t->p1[1] + t->p1[3]) / 2;
-			*out = (TouchOut){ mx0, my0, mx1 - mx0, my1 - my0, (float) (d1 / (d0 < 1 ? 1 : d0)) };
-			return TOUCH_PINCH;
-		}
-		case TS_WAIT_UP:
-			if (n == 0)
-				t->state = TS_IDLE;
-			return TOUCH_NONE;
-	}
-	return TOUCH_NONE;
+	return n;
 }
 
-TouchResult touch_feed(Touch* t, const struct input_event* ev, int64_t now, TouchOut* out)
+int touch_feed(Touch* t, const struct input_event* ev, TPoint* pts)
 {
 	Contact* c = t->slot >= 0 && t->slot < TOUCH_MAX ? &t->c[t->slot] : NULL;
 	switch (ev->type) {
@@ -157,7 +88,7 @@ TouchResult touch_feed(Touch* t, const struct input_event* ev, int64_t now, Touc
 						t->c[0].ry = ev->value, t->c[0].data = true;
 					break;
 			}
-			return TOUCH_NONE;
+			return -1;
 		case EV_KEY:
 			// BTN_TOUCH is the only contact state for single-touch devices;
 			// with MT tracking IDs, only its release (all fingers up) matters.
@@ -168,21 +99,21 @@ TouchResult touch_feed(Touch* t, const struct input_event* ev, int64_t now, Touc
 				else
 					t->c[0].down = true;
 			}
-			return TOUCH_NONE;
+			return -1;
 		case EV_SYN:
 			break;
 		default:
-			return TOUCH_NONE;
+			return -1;
 	}
 	if (ev->code == SYN_MT_REPORT) {
 		// Protocol A: each contact's data ends with SYN_MT_REPORT.
 		t->mt_a = true;
 		if (c && c->data)
 			t->slot++;
-		return TOUCH_NONE;
+		return -1;
 	}
 	if (ev->code != SYN_REPORT)
-		return TOUCH_NONE;
+		return -1;
 
 	if (t->proto_a || t->mt_a) {
 		// Protocol A: the frame lists every contact that is down.
@@ -195,5 +126,5 @@ TouchResult touch_feed(Touch* t, const struct input_event* ev, int64_t now, Touc
 		for (int i = 0; i < TOUCH_MAX; i++)
 			t->c[i].data = false;
 	}
-	return frame(t, now, out);
+	return frame(t, pts);
 }

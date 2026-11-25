@@ -4,9 +4,9 @@
 #   ./build.sh [kindlehf]        Kindle build for firmware 5.16.3+ -> reader/dist/mangle-kual-kindlehf.zip
 #   ./build.sh kindlepw2         Kindle build for older 5.x firmware (soft-float)
 #   ./build.sh custom --cross P  Kindle build with another toolchain (P = triplet, e.g. arm-linux-gnueabihf)
-#   ./build.sh sim               desktop simulator: reader/build/sim/mangle
+#   ./build.sh sim               desktop simulator: common/build/mangle
 #   ./build.sh cyd [ENV]         Cheap Yellow Display firmware (PlatformIO; ENV cyd35r or cyd35c, default both)
-#   ./build.sh test              preprocessor + reader + CYD firmware tests
+#   ./build.sh test              preprocessor, shared app (as Kindle and CYD) and Kindle tests
 #   ./build.sh toolchain [T]     install koxtoolchain target T (default kindlehf) into ~/x-tools
 #   ./build.sh clean             remove build output
 #
@@ -105,8 +105,8 @@ case "$CMD" in
 	sim)
 		need make
 		say "Building desktop simulator"
-		make -C "$READER" -j"$JOBS" sim
-		say "Done: reader/build/sim/mangle"
+		make -C "$ROOT/common" -j"$JOBS"
+		say "Done: common/build/mangle (MANGLE_SIM_DEVICE=kindle|cyd35r|cyd35c)"
 		;;
 	test)
 		need make
@@ -115,11 +115,11 @@ case "$CMD" in
 			die "Python dependencies missing: $PYTHON -m pip install -r preprocessor/requirements.txt pytest"
 		say "Preprocessor tests"
 		(cd "$ROOT/preprocessor" && "$PYTHON" -m pytest -q tests)
-		say "Reader tests"
-		# sim_test.sh generates its sample book with $PYTHON.
-		PYTHON=$PYTHON make -C "$READER" -j"$JOBS" test
-		say "CYD firmware tests (desktop)"
-		PYTHON=$PYTHON make -C "$ROOT/cyd" -j"$JOBS" test
+		say "App tests (shared code, simulated as Kindle and CYD)"
+		# The tests generate their sample books with $PYTHON.
+		PYTHON=$PYTHON make -C "$ROOT/common" -j"$JOBS" test
+		say "Kindle tests"
+		make -C "$READER" -j"$JOBS" test
 		say "All tests passed"
 		;;
 	cyd)
@@ -160,6 +160,7 @@ case "$CMD" in
 		;;
 	clean)
 		make -C "$READER" clean
+		make -C "$ROOT/common" clean
 		;;
 	*)
 		die "unknown command '$CMD' (try --help)"

@@ -12,21 +12,13 @@ on:
     # Tag pushes ignore these filters, so every release gets firmware.
     paths:
       - 'cyd/**'
-      - 'reader/src/nav.*'
-      - 'reader/src/zoom.*'
-      - 'reader/src/gesture.*'
-      - 'reader/src/font.*'
-      - 'reader/src/book.h'
-      - 'reader/src/input.h'
-      - 'reader/third_party/miniz/**'
-      - 'reader/third_party/stb/**'
+      - 'common/**'
       - 'preprocessor/**'
       - '.github/workflows/firmware.yml'
   pull_request:
     paths:
       - 'cyd/**'
-      - 'reader/src/**'
-      - 'reader/third_party/**'
+      - 'common/**'
       - 'preprocessor/**'
       - '.github/workflows/firmware.yml'
   workflow_dispatch:
@@ -40,7 +32,7 @@ permissions:
   contents: read
 
 jobs:
-  # The portable firmware code on the desktop: unit tests and the simulator.
+  # The shared app on the desktop, simulated as both CYD boards (and a Kindle).
   test:
     runs-on: ubuntu-latest
     steps:
@@ -52,7 +44,7 @@ jobs:
           ~/venv/bin/pip install -r preprocessor/requirements.txt
 
       - name: Desktop tests
-        run: PYTHON=~/venv/bin/python make -C cyd test
+        run: PYTHON=~/venv/bin/python make -C common test
 
   build:
     runs-on: ubuntu-latest
