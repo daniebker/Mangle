@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## v0.8.0
 
 ### Added
 - Pinch to zoom on panels and whole pages (up to 4x), centred on the fingers. Drag with one finger to pan while zoomed; pinch back in or double-tap the centre to return to the fitted view. Turning the page resets the zoom.
