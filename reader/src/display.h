@@ -5,6 +5,7 @@
 #include <stdint.h>
 
 #include "book.h"
+#include "zoom.h"
 
 typedef struct {
 	int width, height;    // current (rotated) view size in pixels
@@ -35,3 +36,8 @@ int display_suspend(void);
 
 // Show a rectangle {x, y, w, h} of an image, scaled to fit the screen.
 void compose_rect(const Screen* s, const Image* img, const int rect[4], uint8_t* buf);
+
+// Show part of an image zoomed: the base rectangle at zoom_scale(zm, b),
+// centred on (zm->cx, zm->cy), bilinear. Outside the base rectangle is white.
+// zm must be clamped (zoom_clamp). Returns -1 if out of memory.
+int compose_view(const Screen* s, const Image* img, const ZoomBase* b, const Zoom* zm, uint8_t* buf);

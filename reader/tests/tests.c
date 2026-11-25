@@ -13,6 +13,7 @@
 #include "state.h"
 #include "stats.h"
 #include "touch.h"
+#include "zoom.h"
 
 static int fails, checks;
 #define CHECK(c)                                                                                                       \
@@ -216,9 +217,27 @@ static struct input_event E(int type, int code, int value)
 	return e;
 }
 
+static TouchOut out;
+
 static TouchResult feed(Touch* t, struct input_event e, int64_t now, int* x, int* y)
 {
-	return touch_feed(t, &e, now, x, y);
+	TouchResult r = touch_feed(t, &e, now, &out);
+	if (r != TOUCH_NONE)
+		*x = out.x, *y = out.y;
+	return r;
+}
+
+// Protocol B: put contact `slot` (tracking id or -1) at raw (rx, ry).
+static void mt(Touch* t, int slot, int id, int rx, int ry)
+{
+	int x, y;
+	feed(t, E(EV_ABS, ABS_MT_SLOT, slot), 0, &x, &y);
+	if (id != -2)
+		feed(t, E(EV_ABS, ABS_MT_TRACKING_ID, id), 0, &x, &y);
+	if (id != -1) {
+		feed(t, E(EV_ABS, ABS_MT_POSITION_X, rx), 0, &x, &y);
+		feed(t, E(EV_ABS, ABS_MT_POSITION_Y, ry), 0, &x, &y);
+	}
 }
 
 static void test_touch(void)
@@ -235,26 +254,54 @@ static void test_touch(void)
 	feed(&t, E(EV_ABS, ABS_MT_TRACKING_ID, -1), 100, &x, &y);
 	CHECK(feed(&t, E(EV_SYN, SYN_REPORT, 0), 100, &x, &y) == TOUCH_TAP);
 	CHECK(x == 250 && y == 1000);
-	// Long press via BTN_TOUCH.
+	// Long press via BTN_TOUCH (single-touch device).
+	touch_init(&t, 0, 4095, 0, 4095, 1000, 2000);
 	feed(&t, E(EV_KEY, BTN_TOUCH, 1), 0, &x, &y);
 	feed(&t, E(EV_ABS, ABS_X, 0), 0, &x, &y);
 	feed(&t, E(EV_ABS, ABS_Y, 0), 0, &x, &y);
 	feed(&t, E(EV_SYN, SYN_REPORT, 0), 0, &x, &y);
 	feed(&t, E(EV_KEY, BTN_TOUCH, 0), 900, &x, &y);
 	CHECK(feed(&t, E(EV_SYN, SYN_REPORT, 0), 900, &x, &y) == TOUCH_LONG);
-	// A swipe is neither.
+	// A swipe is a drag.
 	feed(&t, E(EV_KEY, BTN_TOUCH, 1), 0, &x, &y);
 	feed(&t, E(EV_ABS, ABS_X, 0), 0, &x, &y);
 	feed(&t, E(EV_SYN, SYN_REPORT, 0), 0, &x, &y);
 	feed(&t, E(EV_ABS, ABS_X, 3000), 50, &x, &y);
 	feed(&t, E(EV_SYN, SYN_REPORT, 0), 50, &x, &y);
 	feed(&t, E(EV_KEY, BTN_TOUCH, 0), 100, &x, &y);
+	CHECK(feed(&t, E(EV_SYN, SYN_REPORT, 0), 100, &x, &y) == TOUCH_DRAG);
+	CHECK(x == 0 && y == 0 && out.dx == 732 && out.dy == 0);
+
+	// Protocol B pinch: two fingers spread to twice their distance.
+	touch_init(&t, 0, 999, 0, 1999, 1000, 2000);
+	mt(&t, 0, 1, 400, 1000);
+	CHECK(feed(&t, E(EV_SYN, SYN_REPORT, 0), 0, &x, &y) == TOUCH_NONE);
+	mt(&t, 1, 2, 600, 1000);
+	CHECK(feed(&t, E(EV_SYN, SYN_REPORT, 0), 10, &x, &y) == TOUCH_NONE);
+	mt(&t, 0, -2, 300, 1100);
+	mt(&t, 1, -2, 700, 1100);
+	CHECK(feed(&t, E(EV_SYN, SYN_REPORT, 0), 50, &x, &y) == TOUCH_NONE);
+	mt(&t, 1, -1, 0, 0);
+	CHECK(feed(&t, E(EV_SYN, SYN_REPORT, 0), 80, &x, &y) == TOUCH_PINCH);
+	CHECK(x == 500 && y == 1000 && out.dx == 0 && out.dy == 100);
+	CHECK(out.scale > 1.99f && out.scale < 2.01f);
+	// The finger left down is not a tap or drag when it lifts.
+	mt(&t, 0, -2, 100, 100);
+	CHECK(feed(&t, E(EV_SYN, SYN_REPORT, 0), 90, &x, &y) == TOUCH_NONE);
+	mt(&t, 0, -1, 0, 0);
 	CHECK(feed(&t, E(EV_SYN, SYN_REPORT, 0), 100, &x, &y) == TOUCH_NONE);
-	// Second finger (slot 1) is ignored.
-	feed(&t, E(EV_ABS, ABS_MT_SLOT, 1), 0, &x, &y);
-	feed(&t, E(EV_ABS, ABS_MT_TRACKING_ID, 9), 0, &x, &y);
-	CHECK(feed(&t, E(EV_SYN, SYN_REPORT, 0), 0, &x, &y) == TOUCH_NONE && !t.down);
-	t.slot = 0;
+	// ... and the next single touch is a tap again.
+	mt(&t, 0, 3, 100, 100);
+	feed(&t, E(EV_SYN, SYN_REPORT, 0), 200, &x, &y);
+	mt(&t, 0, -1, 0, 0);
+	CHECK(feed(&t, E(EV_SYN, SYN_REPORT, 0), 250, &x, &y) == TOUCH_TAP && x == 100 && y == 100);
+	// Single-touch ABS_X alongside MT axes doesn't clobber contact 0.
+	mt(&t, 0, 4, 200, 200);
+	feed(&t, E(EV_ABS, ABS_X, 900), 0, &x, &y);
+	feed(&t, E(EV_SYN, SYN_REPORT, 0), 300, &x, &y);
+	mt(&t, 0, -1, 0, 0);
+	CHECK(feed(&t, E(EV_SYN, SYN_REPORT, 0), 350, &x, &y) == TOUCH_TAP && x == 200);
+
 	// Protocol A: contact = frame carries position data.
 	touch_init(&t, 0, 999, 0, 1999, 1000, 2000);
 	t.proto_a = true;
@@ -264,6 +311,24 @@ static void test_touch(void)
 	feed(&t, E(EV_SYN, SYN_REPORT, 0), 0, &x, &y);
 	feed(&t, E(EV_SYN, SYN_MT_REPORT, 0), 80, &x, &y);
 	CHECK(feed(&t, E(EV_SYN, SYN_REPORT, 0), 80, &x, &y) == TOUCH_TAP && x == 100 && y == 200);
+	// Protocol A pinch (fingers squeezed to half their distance).
+	for (int f = 0; f < 3; f++) {
+		int d = f == 0 ? 200 : 100;
+		feed(&t, E(EV_ABS, ABS_MT_POSITION_X, 500 - d), 0, &x, &y);
+		feed(&t, E(EV_ABS, ABS_MT_POSITION_Y, 1000), 0, &x, &y);
+		feed(&t, E(EV_SYN, SYN_MT_REPORT, 0), 0, &x, &y);
+		if (f < 2) {
+			feed(&t, E(EV_ABS, ABS_MT_POSITION_X, 500 + d), 0, &x, &y);
+			feed(&t, E(EV_ABS, ABS_MT_POSITION_Y, 1000), 0, &x, &y);
+			feed(&t, E(EV_SYN, SYN_MT_REPORT, 0), 0, &x, &y);
+		}
+		TouchResult r = feed(&t, E(EV_SYN, SYN_REPORT, 0), f * 20, &x, &y);
+		CHECK(r == (f < 2 ? TOUCH_NONE : TOUCH_PINCH));
+	}
+	CHECK(out.scale > 0.49f && out.scale < 0.51f && x == 500);
+	feed(&t, E(EV_SYN, SYN_MT_REPORT, 0), 80, &x, &y);
+	CHECK(feed(&t, E(EV_SYN, SYN_REPORT, 0), 80, &x, &y) == TOUCH_NONE);
+
 	// Quirks.
 	touch_init(&t, 0, 99, 0, 199, 100, 200);
 	touch_quirks(&t, "mirror_x");
@@ -273,6 +338,67 @@ static void test_touch(void)
 	touch_quirks(&t, "swap");
 	touch_map(&t, 199, 50, &x, &y);
 	CHECK(x == 50 && y == 199);
+}
+
+static bool near(double a, double b)
+{
+	return a - b < 1e-6 && b - a < 1e-6;
+}
+
+static void test_zoom(void)
+{
+	// A 100x200 panel at (50, 0) on a 400x400 screen: fitted at 2x, 200x400.
+	int      rect[4] = { 50, 0, 100, 200 };
+	ZoomBase b       = zoom_base(rect, true, 400, 400);
+	CHECK(near(b.s0, 2.0));
+	Zoom zm;
+	zoom_reset(&zm);
+	CHECK(!zoom_active(&zm));
+	CHECK(!zoom_pan(&zm, &b, 10, 10));    // panning needs a zoom
+	// Pinch out 2x around the screen centre: zoomed on the panel centre.
+	CHECK(zoom_pinch(&zm, &b, 200, 200, 200, 200, 2.0));
+	CHECK(near(zm.z, 2.0) && near(zm.cx, 100) && near(zm.cy, 100));
+	// Pinch around the top-left of the screen keeps that image point still.
+	zoom_reset(&zm);
+	CHECK(zoom_pinch(&zm, &b, 100, 0, 100, 0, 2.0));
+	CHECK(near(zm.cx, 100) && near(zm.cy, 50));    // view is the panel's top half
+	// Panning is limited to the panel: at 4x/side the view is 100 px tall.
+	CHECK(zoom_pan(&zm, &b, 0, -1000));
+	CHECK(near(zm.cy, 150));
+	CHECK(!zoom_pan(&zm, &b, 0, -10));    // already at the bottom
+	// Wider than the panel: stays centred horizontally.
+	CHECK(!zoom_pan(&zm, &b, 500, 0));
+	CHECK(near(zm.cx, 100));
+	// Capped at ZOOM_MAX.
+	zoom_pinch(&zm, &b, 200, 200, 200, 200, 100.0);
+	CHECK(near(zm.z, ZOOM_MAX));
+	// Pinching back in below ZOOM_SNAP returns to the fitted view.
+	CHECK(zoom_pinch(&zm, &b, 200, 200, 200, 200, 0.01));
+	CHECK(!zoom_active(&zm));
+	CHECK(!zoom_pinch(&zm, &b, 200, 200, 200, 200, 0.5));    // nothing to zoom out of
+	// Whole pages aren't enlarged at zoom 1.
+	int page[4] = { 0, 0, 100, 100 };
+	CHECK(near(zoom_base(page, false, 400, 400).s0, 1.0));
+	CHECK(near(zoom_base(page, true, 400, 400).s0, 4.0));
+
+	// compose_view: 2x2 image (black left column, white right), shown whole
+	// on 4x4 at 2x zoom from s0 = 1 is the black/white edge, centred.
+	Screen   s     = { 4, 4, 0, 0, 0 };
+	uint8_t  px[4] = { 0, 255, 0, 255 };
+	Image    img   = { 2, 2, px };
+	uint8_t  buf[16];
+	int      whole[4] = { 0, 0, 2, 2 };
+	ZoomBase pb       = zoom_base(whole, false, 4, 4);
+	Zoom     z2       = { 2.0, 1.0, 1.0 };
+	zoom_clamp(&z2, &pb);
+	CHECK(near(z2.cx, 1.0));
+	CHECK(compose_view(&s, &img, &pb, &z2, buf) == 0);
+	CHECK(buf[0] == 0 && buf[3] == 255 && buf[12] == 0 && buf[15] == 255);
+	// Fitted (zoom 1): a 2x2 image in the middle of white.
+	Zoom z1;
+	zoom_reset(&z1);
+	CHECK(compose_view(&s, &img, &pb, &z1, buf) == 0);
+	CHECK(buf[0] == 255 && buf[5] == 0 && buf[6] == 255 && buf[15] == 255);
 }
 
 static void test_compose(void)
@@ -455,6 +581,7 @@ int main(int argc, char** argv)
 	test_nav();
 	test_gesture();
 	test_touch();
+	test_zoom();
 	test_compose();
 	test_natcmp_state();
 	test_stats();

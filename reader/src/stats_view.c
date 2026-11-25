@@ -441,6 +441,8 @@ bool stats_screen(const Screen* s, const char* state_dir, const StatRec* live, u
 		}
 		if (ev.kind == IN_LONG)
 			break;
+		if (ev.kind == IN_DRAG || ev.kind == IN_PINCH)
+			continue;
 		if (ev.y < L.bar_h) {
 			if (ev.x < L.back_end)
 				break;

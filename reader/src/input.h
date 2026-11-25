@@ -1,16 +1,18 @@
-// Input: touch taps / long presses and physical keys.
+// Input: touch taps, long presses, drags, pinches and physical keys.
 // Backends: evdev (Kindle, /dev/input/eventX) and sim (commands on stdin).
 #pragma once
 
 #include <stdbool.h>
 #include <stdint.h>
 
-typedef enum { IN_TAP, IN_LONG, IN_KEY, IN_QUIT } InKind;
+typedef enum { IN_TAP, IN_LONG, IN_KEY, IN_QUIT, IN_DRAG, IN_PINCH } InKind;
 
 typedef struct {
 	InKind kind;
-	int    x, y;    // screen coordinates for taps
-	int    code;    // key code for IN_KEY
+	int    x, y;      // screen coordinates: taps, drag start, pinch midpoint at the start
+	int    code;      // key code for IN_KEY
+	int    dx, dy;    // IN_DRAG: movement; IN_PINCH: how far the midpoint moved
+	float  scale;     // IN_PINCH: finger distance at the end / at the start
 } InEvent;
 
 int  input_open(int screen_w, int screen_h);

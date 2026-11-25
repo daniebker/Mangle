@@ -133,6 +133,9 @@ empty `panels` list means the page is always shown whole.
 | Hold centre (0.7 s) | close the book (back to the library) | same |
 | Hold left/right | full refresh (clears ghosting) | same |
 | Page-turn buttons | forward / back | same |
+| Pinch out / in (two fingers) | zoom in / out of the panel or page | same |
+| Drag (while zoomed) | pan | same |
+| Double-tap centre (while zoomed) | back to the fitted view | same |
 
 - **Panel mode** (the default) moves one panel at a time and carries on to the next or previous
   page. Before the first panel of a page, the whole page is shown once as an overview, so you
@@ -141,6 +144,11 @@ empty `panels` list means the page is always shown whole.
   `PAGE_OVERVIEW=0` in `mangle.conf` (or run the reader with `-O`).
 - **Page mode** moves a whole page at a time.
 - Switching modes keeps you on the same page.
+- **Zoom**: pinch with two fingers to zoom into the current panel or page (up to 4x the fitted
+  size), around the point between your fingers. The new view is drawn once you lift a finger
+  (e-ink can't follow the fingers live). While zoomed, drag with one finger to pan; the view
+  stays inside the panel (or page). Pinch back in, or double-tap the centre, to return to the
+  fitted view. Turning the page or panel also resets the zoom. Taps keep working as usual.
 - Only centre taps wait 300 ms for a possible second tap. Side taps turn the page immediately.
 - Normal turns use a fast partial refresh. Every 8th turn (configurable) and every mode switch
   uses a full flashing refresh to clear ghosting.
@@ -261,7 +269,8 @@ make test                 # unit tests (ASan/UBSan) + end-to-end simulator test
 printf 'tap 10 700\ntap 10 700\nquit\n' | MANGLE_SIM_DIR=/tmp/frames ./build/sim/mangle -v book.zip
 ```
 
-Simulator commands are `tap X Y`, `long X Y`, `key CODE`, `sleep MS` and `quit`. The screen size
+Simulator commands are `tap X Y`, `long X Y`, `drag X Y DX DY`, `pinch X Y SCALE [DX DY]`
+(two fingers around X,Y; SCALE > 1 zooms in), `key CODE`, `sleep MS` and `quit`. The screen size
 comes from `MANGLE_SIM_SCREEN=WxH`.
 
 Preprocessor tests: `cd preprocessor && python -m pytest tests`.

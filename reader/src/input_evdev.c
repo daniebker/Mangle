@@ -1,6 +1,6 @@
 // evdev input backend (Kindle). Finds the touchscreen and any page-turn
 // buttons under /dev/input, grabs them exclusively (EVIOCGRAB) so the paused
-// Kindle UI doesn't see our taps, and decodes taps/long presses.
+// Kindle UI doesn't see our taps, and decodes taps, long presses, drags and pinches.
 //
 //   MANGLE_TOUCH_DEV=/dev/input/event1    force the touch device
 //   MANGLE_TOUCH=swap,mirror_x,mirror_y   coordinate quirks for the model
@@ -152,14 +152,16 @@ static bool drain(Dev* d)
 		for (size_t i = 0; i < (size_t) n / sizeof(*evs); i++) {
 			const struct input_event* e = &evs[i];
 			if (d->touch) {
-				int         x, y;
-				TouchResult r = touch_feed(&touch, e, now_ms(), &x, &y);
+				TouchOut    o;
+				TouchResult r = touch_feed(&touch, e, now_ms(), &o);
 				if (r != TOUCH_NONE && !have_pending) {
-					pending      = (InEvent){ r == TOUCH_TAP ? IN_TAP : IN_LONG, x, y, 0 };
+					static const InKind kinds[] = { [TOUCH_TAP] = IN_TAP, [TOUCH_LONG] = IN_LONG,
+									[TOUCH_DRAG] = IN_DRAG, [TOUCH_PINCH] = IN_PINCH };
+					pending      = (InEvent){ kinds[r], o.x, o.y, 0, o.dx, o.dy, o.scale };
 					have_pending = true;
 				}
 			} else if (e->type == EV_KEY && e->value == 1 && !have_pending) {
-				pending      = (InEvent){ IN_KEY, 0, 0, e->code };
+				pending      = (InEvent){ .kind = IN_KEY, .code = e->code };
 				have_pending = true;
 			}
 		}

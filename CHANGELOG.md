@@ -1,5 +1,11 @@
 # Changelog
 
+## Unreleased
+
+### Added
+- Pinch to zoom on panels and whole pages (up to 4x), centred on the fingers. Drag with one finger to pan while zoomed; pinch back in or double-tap the centre to return to the fitted view. Turning the page resets the zoom.
+- Touch input tracks two fingers (MT protocol A and B). Simulator commands `drag` and `pinch`.
+
 ## v0.7.0
 
 ### Added

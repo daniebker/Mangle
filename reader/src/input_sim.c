@@ -1,6 +1,9 @@
 // Desktop simulator input: one command per line on stdin.
 //   tap X Y      tap at screen coordinates
 //   long X Y     long press
+//   drag X Y DX DY            one-finger drag from X,Y by DX,DY
+//   pinch X Y SCALE [DX DY]   two-finger pinch around X,Y (SCALE > 1 spreads
+//                             the fingers = zoom in); the midpoint moves by DX,DY
 //   key CODE     key press (linux/input.h code, e.g. 109 = KEY_PAGEDOWN)
 //   sleep MS     pause before reading the next command
 //   quit         same as a signal: exit cleanly
@@ -44,15 +47,26 @@ int input_wait(InEvent* ev, int timeout_ms)
 		while (next_line(line, sizeof(line))) {
 			int a, b;
 			if (sscanf(line, "tap %d %d", &a, &b) == 2) {
-				*ev = (InEvent){ IN_TAP, a, b, 0 };
+				*ev = (InEvent){ .kind = IN_TAP, .x = a, .y = b };
 				return 1;
 			}
 			if (sscanf(line, "long %d %d", &a, &b) == 2) {
-				*ev = (InEvent){ IN_LONG, a, b, 0 };
+				*ev = (InEvent){ .kind = IN_LONG, .x = a, .y = b };
+				return 1;
+			}
+			int   c, d;
+			float f;
+			if (sscanf(line, "drag %d %d %d %d", &a, &b, &c, &d) == 4) {
+				*ev = (InEvent){ IN_DRAG, a, b, 0, c, d, 1.0f };
+				return 1;
+			}
+			int np = sscanf(line, "pinch %d %d %f %d %d", &a, &b, &f, &c, &d);
+			if (np == 3 || np == 5) {
+				*ev = (InEvent){ IN_PINCH, a, b, 0, np == 5 ? c : 0, np == 5 ? d : 0, f };
 				return 1;
 			}
 			if (sscanf(line, "key %d", &a) == 1) {
-				*ev = (InEvent){ IN_KEY, 0, 0, a };
+				*ev = (InEvent){ .kind = IN_KEY, .code = a };
 				return 1;
 			}
 			if (sscanf(line, "sleep %d", &a) == 1) {
@@ -64,7 +78,7 @@ int input_wait(InEvent* ev, int timeout_ms)
 				continue;
 			}
 			if (strncmp(line, "quit", 4) == 0) {
-				*ev = (InEvent){ IN_QUIT, 0, 0, 0 };
+				*ev = (InEvent){ .kind = IN_QUIT };
 				return 1;
 			}
 		}
@@ -81,7 +95,7 @@ int input_wait(InEvent* ev, int timeout_ms)
 			return 0;
 		ssize_t n = read(STDIN_FILENO, buf + len, sizeof(buf) - 1 - len);
 		if (n <= 0) {
-			*ev = (InEvent){ IN_QUIT, 0, 0, 0 };
+			*ev = (InEvent){ .kind = IN_QUIT };
 			return 1;
 		}
 		len += (size_t) n;

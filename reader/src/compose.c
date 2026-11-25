@@ -1,3 +1,5 @@
+#include <math.h>
+#include <stdlib.h>
 #include <string.h>
 
 #include "display.h"
@@ -96,4 +98,65 @@ void compose_rect(const Screen* s, const Image* img, const int rect[4], uint8_t*
 			dst[x]  = (uint8_t) ((top * (256 - wy) + bot * wy) >> 16);
 		}
 	}
+}
+
+// One axis of compose_view: for each screen pixel, the two source pixels and
+// the weight (0..256) of the second, or lo[i] = -1 outside the base.
+static void axis(int n, double c, double scale, int b0, int blen, int* lo, int* hi, int* w)
+{
+	for (int i = 0; i < n; i++) {
+		double u = c + (i + 0.5 - n / 2.0) / scale - 0.5;    // source pixel centres are at integers
+		if (u < b0 - 0.5 || u >= b0 + blen - 0.5) {
+			lo[i] = -1;
+			continue;
+		}
+		double f  = floor(u);
+		int    i0 = (int) f;
+		w[i]      = (int) ((u - f) * 256);
+		lo[i]     = i0 < b0 ? b0 : i0;
+		hi[i]     = i0 + 1 >= b0 + blen ? b0 + blen - 1 : i0 + 1;
+	}
+}
+
+int compose_view(const Screen* s, const Image* img, const ZoomBase* b, const Zoom* zm, uint8_t* buf)
+{
+	int sw = s->width, sh = s->height;
+	memset(buf, 0xFF, (size_t) sw * sh);
+	if (!img || !img->px)
+		return 0;
+	// Keep the base inside the image.
+	int bx = b->bx < 0 ? 0 : b->bx, by = b->by < 0 ? 0 : b->by;
+	int bw = b->bw, bh = b->bh;
+	if (bx + bw > img->w)
+		bw = img->w - bx;
+	if (by + bh > img->h)
+		bh = img->h - by;
+	if (bw < 1 || bh < 1)
+		return 0;
+
+	int* t = malloc(sizeof(int) * 3 * (size_t) (sw + sh));
+	if (!t)
+		return -1;
+	int *xl = t, *xh = xl + sw, *xw = xh + sw, *yl = xw + sw, *yh = yl + sh, *yw = yh + sh;
+	double scale = zoom_scale(zm, b);
+	axis(sw, zm->z > 1 ? zm->cx : bx + bw / 2.0, scale, bx, bw, xl, xh, xw);
+	axis(sh, zm->z > 1 ? zm->cy : by + bh / 2.0, scale, by, bh, yl, yh, yw);
+	for (int y = 0; y < sh; y++) {
+		if (yl[y] < 0)
+			continue;
+		const uint8_t* r0  = img->px + (size_t) yl[y] * img->w;
+		const uint8_t* r1  = img->px + (size_t) yh[y] * img->w;
+		int            wy  = yw[y];
+		uint8_t*       dst = buf + (size_t) y * sw;
+		for (int x = 0; x < sw; x++) {
+			if (xl[x] < 0)
+				continue;
+			int a = xl[x], c = xh[x], wx = xw[x];
+			int top = r0[a] * (256 - wx) + r0[c] * wx;
+			int bot = r1[a] * (256 - wx) + r1[c] * wx;
+			dst[x]  = (uint8_t) ((top * (256 - wy) + bot * wy) >> 16);
+		}
+	}
+	free(t);
+	return 0;
 }
